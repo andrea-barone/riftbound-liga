@@ -1,0 +1,124 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="theme-color" content="#1e3a2c" />
+  <title>Das Brett · Riftbound Championship</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Oswald:wght@500;600;700&display=swap" />
+  <link rel="stylesheet" href="./style.css" />
+</head>
+<body>
+  <header class="site">
+    <a class="brand" href="https://dasbrett.bar/" target="_blank" rel="noopener">
+      <span class="brand-mark">DAS<br>BRETT</span>
+      <span class="brand-sub">Spielebar</span>
+    </a>
+    <div class="divider"></div>
+    <div class="title">
+      <h1 id="tournament-name">Riftbound Championship</h1>
+      <div class="subtitle">Season points across all qualifier days · powered by Carde.io standings</div>
+    </div>
+  </header>
+
+  <main>
+    <section class="card">
+      <h2>Standings</h2>
+      <div id="leaderboard">
+        <div class="empty">Loading…</div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="site">
+    Updates whenever an admin posts new daily standings. Last refreshed:
+    <span id="refreshed-at"></span>
+  </footer>
+
+  <script type="module">
+    import {
+      getTournament, getPlayers, getStandings,
+      computeLeaderboard, el, fmtDate
+    } from "./app.js";
+
+    async function render() {
+      const tournament = await getTournament();
+      document.getElementById("tournament-name").textContent = tournament.name;
+
+      const [players, { days, standings }] = await Promise.all([
+        getPlayers(tournament.id),
+        getStandings(tournament.id),
+      ]);
+
+      const leaderboard = computeLeaderboard(players, standings);
+      renderLeaderboard(leaderboard, days, tournament.cut_size);
+      document.getElementById("refreshed-at").textContent = new Date().toLocaleString();
+    }
+
+    function renderLeaderboard(rows, days, cutSize) {
+      const wrap = document.getElementById("leaderboard");
+      wrap.innerHTML = "";
+      if (rows.length === 0) {
+        wrap.appendChild(el("div", { class: "empty" }, "No qualifier results posted yet."));
+        return;
+      }
+
+      const table = el("table");
+      const thead = el("thead");
+      const headRow = el("tr", {}, [
+        el("th", {}, "#"),
+        el("th", {}, "Player"),
+        el("th", {}, "Total"),
+        el("th", {}, "Days"),
+        ...days.map(d =>
+          el("th", { class: "day", title: d.name },
+            d.event_date ? fmtDate(d.event_date) : d.name)
+        ),
+      ]);
+      thead.appendChild(headRow);
+      table.appendChild(thead);
+
+      const tbody = el("tbody");
+      rows.forEach((r, i) => {
+        const tr = el("tr");
+        tr.appendChild(el("td", { class: "rank" }, String(i + 1)));
+        tr.appendChild(el("td", { class: "player" }, r.name));
+        tr.appendChild(el("td", { class: "total" }, String(r.totalPoints)));
+        tr.appendChild(el("td", { class: "attended" }, String(r.daysAttended)));
+        days.forEach(d => {
+          const e = r.perDay[d.id];
+          const cell = el("td", { class: "day" + (e ? " has" : "") });
+          if (e) {
+            cell.appendChild(el("div", { class: "pts" }, String(e.points)));
+            cell.appendChild(el("div", { class: "plc" }, `#${e.placement}`));
+          } else {
+            cell.appendChild(el("span", { class: "muted" }, "—"));
+          }
+          tr.appendChild(cell);
+        });
+        tbody.appendChild(tr);
+
+        // Cut line
+        if (i + 1 === cutSize && rows.length > cutSize) {
+          tr.classList.add("cut-line");
+          const labelTr = el("tr", { class: "cut-label" }, [
+            el("td", { colspan: 4 + days.length }, `▼ Cut line — top ${cutSize} advance to finals ▼`)
+          ]);
+          tbody.appendChild(labelTr);
+        }
+      });
+      table.appendChild(tbody);
+      wrap.appendChild(table);
+    }
+
+    render().catch(err => {
+      console.error(err);
+      document.getElementById("leaderboard").innerHTML =
+        `<div class="status err">Couldn't load standings: ${err.message || err}. ` +
+        `Make sure <code>config.js</code> points at your Supabase project and the schema is applied.</div>`;
+    });
+  </script>
+</body>
+</html>

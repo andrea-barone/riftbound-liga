@@ -1,0 +1,327 @@
+/* Das Brett · Spielebar — Riftbound Championship Tracker
+   Palette echoes dasbrett.bar: cream surfaces, deep forest green primary,
+   sage accents, black wordmark, condensed-caps typography. */
+
+:root {
+  --bg:         #f3ead7;   /* warm cream page background */
+  --panel:      #fcf6ea;   /* lighter cream — cards */
+  --panel-2:    #ebe1ca;   /* slightly darker cream — inputs, day blocks */
+  --border:     #d6c8a8;   /* warm tan border */
+  --text:       #1a1d1a;   /* near-black body text */
+  --muted:      #7b8478;   /* warm gray-green for secondary text */
+  --accent:     #1e3a2c;   /* deep forest green — primary brand */
+  --accent-2:   #2d4d3c;   /* slightly lighter forest for hovers */
+  --sage:       #bfc8b9;   /* dusty sage — the nav bar tone on dasbrett.bar */
+  --bad:        #a8482b;   /* terracotta for destructive actions */
+  --good:       #2d4d3c;   /* success uses the deep green */
+  --cut-line:   #1e3a2c;
+  --on-accent:  #f3ead7;   /* text on green */
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  padding: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  font-size: 15px;
+  line-height: 1.45;
+}
+
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+
+/* ---------- Header / brand ---------- */
+
+header.site {
+  background: var(--accent);
+  color: var(--on-accent);
+  padding: 22px 28px;
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  border-bottom: 4px solid var(--sage);
+}
+
+header.site .brand {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  color: var(--on-accent);
+}
+
+header.site .brand-mark {
+  font-family: "Oswald", "Impact", "Bebas Neue", "Helvetica Neue Condensed Bold", "Arial Narrow", sans-serif;
+  font-weight: 700;
+  font-size: 30px;
+  line-height: 0.92;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  padding: 8px 14px;
+  border: 2px solid var(--on-accent);
+  display: inline-block;
+  text-align: center;
+}
+
+header.site .brand-sub {
+  font-size: 11px;
+  letter-spacing: 4px;
+  text-transform: uppercase;
+  color: var(--on-accent);
+  opacity: 0.85;
+}
+
+header.site .divider {
+  width: 1px;
+  align-self: stretch;
+  background: rgba(243, 234, 215, 0.25);
+  margin: 0 4px;
+}
+
+header.site .title {
+  flex: 1;
+  min-width: 0;
+}
+header.site h1 {
+  margin: 0;
+  font-size: 22px;
+  font-weight: 600;
+  letter-spacing: 0.4px;
+  color: var(--on-accent);
+}
+header.site .subtitle {
+  margin-top: 2px;
+  color: var(--on-accent);
+  opacity: 0.75;
+  font-size: 13px;
+}
+
+header.site .toolbar { color: var(--on-accent); }
+header.site .toolbar a { color: var(--on-accent); text-decoration: underline; }
+header.site .toolbar .muted { color: var(--on-accent); opacity: 0.75; }
+
+/* ---------- Layout ---------- */
+
+main {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 28px 24px;
+}
+
+.card {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 22px;
+  margin-bottom: 20px;
+  box-shadow: 0 1px 0 rgba(30, 58, 44, 0.04);
+}
+
+.card h2 {
+  margin: 0 0 14px 0;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--accent);
+  letter-spacing: 2.5px;
+  text-transform: uppercase;
+}
+
+/* ---------- Leaderboard table ---------- */
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-variant-numeric: tabular-nums;
+}
+
+thead th {
+  text-align: left;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 1.2px;
+  color: var(--muted);
+  padding: 10px 10px;
+  border-bottom: 1px solid var(--border);
+  background: var(--panel-2);
+  position: sticky;
+  top: 0;
+}
+
+tbody td {
+  padding: 10px 10px;
+  border-bottom: 1px solid var(--border);
+}
+
+tbody tr:hover { background: rgba(30, 58, 44, 0.05); }
+
+td.rank      { width: 48px; color: var(--muted); text-align: right; font-weight: 600; }
+td.player    { font-weight: 600; }
+td.total     { font-weight: 700; color: var(--accent); text-align: right; width: 80px; font-size: 17px; }
+td.attended  { color: var(--muted); text-align: right; width: 80px; }
+td.day       { text-align: center; width: 70px; color: var(--muted); }
+td.day.has   { color: var(--text); }
+td.day .pts  { font-weight: 700; color: var(--accent); }
+td.day .plc  { font-size: 11px; color: var(--muted); }
+
+tr.cut-line td {
+  border-bottom: 2px dashed var(--cut-line);
+  padding-bottom: 14px;
+}
+tr.cut-line + tr td { padding-top: 14px; }
+tr.cut-label td {
+  padding: 8px 10px;
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--cut-line);
+  text-transform: uppercase;
+  letter-spacing: 3px;
+  background: transparent;
+  border: none;
+  text-align: center;
+}
+
+.empty {
+  color: var(--muted);
+  padding: 28px;
+  text-align: center;
+  font-style: italic;
+}
+
+.muted { color: var(--muted); }
+
+/* ---------- Forms / admin ---------- */
+
+input[type="text"],
+input[type="email"],
+input[type="number"],
+input[type="date"],
+textarea,
+select {
+  background: #fff;
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 9px 11px;
+  font-size: 14px;
+  font-family: inherit;
+  width: 100%;
+}
+input:focus, textarea:focus, select:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px rgba(30, 58, 44, 0.15);
+}
+textarea { min-height: 200px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px; }
+label {
+  display: block;
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--muted);
+  margin-bottom: 4px;
+  text-transform: uppercase;
+  letter-spacing: 1.5px;
+}
+.field { margin-bottom: 14px; }
+.row { display: flex; gap: 14px; align-items: flex-end; }
+.row > .field { flex: 1; }
+
+button {
+  background: var(--accent);
+  color: var(--on-accent);
+  border: none;
+  border-radius: 3px;
+  padding: 10px 18px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  cursor: pointer;
+  font-family: inherit;
+}
+button:hover { background: var(--accent-2); }
+button.secondary {
+  background: transparent;
+  color: var(--accent);
+  border: 1px solid var(--accent);
+}
+button.secondary:hover { background: rgba(30, 58, 44, 0.08); }
+button.danger {
+  background: transparent;
+  color: var(--bad);
+  border: 1px solid var(--bad);
+}
+button.danger:hover { background: rgba(168, 72, 43, 0.1); }
+
+.toolbar { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+
+.tier-row {
+  display: grid;
+  grid-template-columns: 1fr 80px 80px 80px 40px;
+  gap: 10px;
+  align-items: center;
+  margin-bottom: 8px;
+}
+.tier-row label.tiny { font-size: 9px; text-transform: uppercase; color: var(--muted); letter-spacing: 1.2px; }
+
+.status {
+  padding: 10px 14px;
+  border-radius: 3px;
+  margin: 14px 0;
+  font-size: 13px;
+}
+.status.ok   { background: rgba(45, 77, 60, 0.1);  color: var(--good); border: 1px solid rgba(45, 77, 60, 0.3); }
+.status.err  { background: rgba(168, 72, 43, 0.1); color: var(--bad);  border: 1px solid rgba(168, 72, 43, 0.3); }
+.status.info { background: rgba(30, 58, 44, 0.08); color: var(--accent); border: 1px solid rgba(30, 58, 44, 0.25); }
+
+.day-block {
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 16px;
+  margin-bottom: 14px;
+  background: var(--panel-2);
+}
+.day-block header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+  background: transparent;
+  border: none;
+  padding: 0;
+}
+.day-block header .meta { font-size: 13px; color: var(--muted); }
+
+ul.standings-list { list-style: none; padding: 0; margin: 10px 0 0 0; }
+ul.standings-list li {
+  display: grid;
+  grid-template-columns: 40px 1fr 60px 40px;
+  gap: 10px;
+  align-items: center;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--border);
+  font-size: 13px;
+}
+ul.standings-list li:last-child { border-bottom: none; }
+ul.standings-list .plc { color: var(--muted); text-align: right; font-weight: 600; }
+ul.standings-list .pts { text-align: right; color: var(--accent); font-weight: 700; }
+
+footer.site {
+  text-align: center;
+  color: var(--muted);
+  font-size: 11px;
+  padding: 28px 20px;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+}
+
+@media (max-width: 640px) {
+  header.site { flex-wrap: wrap; padding: 16px; gap: 14px; }
+  header.site .brand-mark { font-size: 24px; padding: 6px 10px; }
+  header.site h1 { font-size: 18px; }
+  main { padding: 16px 12px; }
+  table { font-size: 13px; }
+  td.day, th.day { width: 50px; }
+}

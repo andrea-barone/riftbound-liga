@@ -1,0 +1,461 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="theme-color" content="#1e3a2c" />
+  <title>Das Brett · Championship Admin</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Oswald:wght@500;600;700&display=swap" />
+  <link rel="stylesheet" href="./style.css" />
+</head>
+<body>
+  <header class="site">
+    <a class="brand" href="./index.html">
+      <span class="brand-mark">DAS<br>BRETT</span>
+      <span class="brand-sub">Spielebar</span>
+    </a>
+    <div class="divider"></div>
+    <div class="title">
+      <h1>Championship Admin</h1>
+      <div class="subtitle">Manage the championship — only allowlisted emails can edit.</div>
+    </div>
+    <div class="toolbar">
+      <a href="./index.html">← Public leaderboard</a>
+      <span id="who" class="muted"></span>
+      <button id="sign-out" class="secondary" style="display:none">Sign out</button>
+    </div>
+  </header>
+
+  <main>
+    <div id="status-area"></div>
+
+    <!-- ============ Sign-in view ============ -->
+    <section id="signin-view" class="card" style="display:none">
+      <h2>Sign in</h2>
+      <p class="muted" style="margin-top:0">
+        Enter your email and we'll send you a one-time login link.
+        Your email must already be in the <code>admins</code> table.
+      </p>
+      <div class="row">
+        <div class="field" style="flex:1">
+          <label for="email">Email</label>
+          <input type="email" id="email" placeholder="you@store.example" />
+        </div>
+        <button id="send-link">Send link</button>
+      </div>
+    </section>
+
+    <!-- ============ Not-allowed view ============ -->
+    <section id="denied-view" class="card" style="display:none">
+      <h2>Not an admin</h2>
+      <p>
+        You're signed in as <strong id="denied-email"></strong>, but this email
+        isn't in the admin allowlist. Ask the person who set up Supabase to run:
+      </p>
+      <pre style="background:var(--panel-2); padding:12px; border-radius:6px; font-size:13px;">INSERT INTO admins (email) VALUES ('<span id="denied-email-2"></span>');</pre>
+    </section>
+
+    <!-- ============ Admin views ============ -->
+    <section id="tournament-view" class="card" style="display:none">
+      <h2>Tournament</h2>
+      <div class="row">
+        <div class="field"><label>Name</label><input type="text" id="t-name" /></div>
+        <div class="field" style="flex:0 0 140px"><label>Cut size</label><input type="number" min="1" id="t-cut" /></div>
+      </div>
+      <div class="field">
+        <label>Scoring tiers</label>
+        <div id="tier-editor"></div>
+        <button id="add-tier" class="secondary" style="margin-top:6px">+ Add tier</button>
+      </div>
+      <div class="toolbar">
+        <button id="save-tournament">Save</button>
+        <span id="t-status" class="muted"></span>
+      </div>
+    </section>
+
+    <section id="days-view" class="card" style="display:none">
+      <h2>Qualifier days</h2>
+      <div id="days-list"></div>
+
+      <hr style="border:none; border-top: 1px solid var(--border); margin: 16px 0;" />
+      <h2 style="font-size:14px">Add a new qualifier day</h2>
+      <div class="row">
+        <div class="field" style="flex:2"><label>Day name</label><input type="text" id="new-day-name" placeholder="Qualifier 1" /></div>
+        <div class="field" style="flex:1"><label>Date (optional)</label><input type="date" id="new-day-date" /></div>
+        <button id="add-day">Add day</button>
+      </div>
+    </section>
+
+    <section id="import-view" class="card" style="display:none">
+      <h2>Import standings <span id="import-day-name" class="muted"></span></h2>
+      <p class="muted" style="margin-top:0; font-size:13px">
+        Paste the final standings from Carde.io. One player per line. Leading placement
+        numbers (e.g. <code>1. Alice</code> or <code>1&nbsp;Alice</code>) are detected;
+        otherwise line order is used.
+      </p>
+      <textarea id="import-text" placeholder="1. Alice
+2. Bob
+3. Charlie
+…"></textarea>
+      <div class="toolbar" style="margin-top:8px">
+        <button id="preview-import" class="secondary">Preview</button>
+        <button id="commit-import">Save standings</button>
+        <button id="cancel-import" class="secondary">Cancel</button>
+      </div>
+      <div id="import-preview"></div>
+    </section>
+  </main>
+
+  <footer class="site">Admin view — changes are visible on the public leaderboard immediately.</footer>
+
+  <script type="module">
+    import {
+      supabase, getTournament, getDays, getPlayers, getStandings,
+      pointsForPlacement, parseStandings, el, fmtDate
+    } from "./app.js";
+
+    // -----------------------------------------------------------------
+    // Status banner
+    // -----------------------------------------------------------------
+    const statusArea = document.getElementById("status-area");
+    function flash(msg, kind = "info") {
+      statusArea.innerHTML = "";
+      const n = el("div", { class: `status ${kind}` }, msg);
+      statusArea.appendChild(n);
+      if (kind === "ok") setTimeout(() => n.remove(), 4000);
+    }
+
+    // -----------------------------------------------------------------
+    // Auth
+    // -----------------------------------------------------------------
+    const signInView = document.getElementById("signin-view");
+    const deniedView = document.getElementById("denied-view");
+    const tournamentView = document.getElementById("tournament-view");
+    const daysView = document.getElementById("days-view");
+    const importView = document.getElementById("import-view");
+    const signOutBtn = document.getElementById("sign-out");
+    const whoEl = document.getElementById("who");
+
+    document.getElementById("send-link").addEventListener("click", async () => {
+      const email = document.getElementById("email").value.trim();
+      if (!email) return flash("Enter your email.", "err");
+      const { error } = await supabase.auth.signInWithOtp({
+        email,
+        options: { emailRedirectTo: window.location.href },
+      });
+      if (error) return flash(error.message, "err");
+      flash(`Login link sent to ${email}. Check your inbox.`, "ok");
+    });
+
+    signOutBtn.addEventListener("click", async () => {
+      await supabase.auth.signOut();
+      location.reload();
+    });
+
+    async function bootstrap() {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        signInView.style.display = "";
+        return;
+      }
+      const email = session.user.email;
+      whoEl.textContent = email;
+      signOutBtn.style.display = "";
+
+      // Check admin allowlist (RLS only returns rows if caller is admin).
+      const { data: adminRows, error: aErr } = await supabase
+        .from("admins").select("email").limit(1);
+      if (aErr || !adminRows || adminRows.length === 0) {
+        document.getElementById("denied-email").textContent = email;
+        document.getElementById("denied-email-2").textContent = email;
+        deniedView.style.display = "";
+        return;
+      }
+
+      tournamentView.style.display = "";
+      daysView.style.display = "";
+      await loadAll();
+    }
+
+    supabase.auth.onAuthStateChange((_event, _session) => {
+      // After magic-link redirect, the session is parsed from the URL hash.
+      // We just re-bootstrap.
+      bootstrap().catch(e => flash(e.message, "err"));
+    });
+
+    // -----------------------------------------------------------------
+    // State
+    // -----------------------------------------------------------------
+    let tournament = null;
+    let days = [];
+    let players = [];
+    let standings = [];
+    let editingDayId = null;
+    let pendingParsed = null;
+
+    async function loadAll() {
+      tournament = await getTournament();
+      renderTournament();
+      const res = await getStandings(tournament.id);
+      days = res.days;
+      standings = res.standings;
+      players = await getPlayers(tournament.id);
+      renderDays();
+    }
+
+    // -----------------------------------------------------------------
+    // Tournament editor
+    // -----------------------------------------------------------------
+    function renderTournament() {
+      document.getElementById("t-name").value = tournament.name;
+      document.getElementById("t-cut").value = tournament.cut_size;
+      renderTiers(tournament.scoring_tiers);
+    }
+
+    function renderTiers(tiers) {
+      const wrap = document.getElementById("tier-editor");
+      wrap.innerHTML = "";
+      const header = el("div", { class: "tier-row" }, [
+        el("label", { class: "tiny" }, "Label"),
+        el("label", { class: "tiny" }, "Min"),
+        el("label", { class: "tiny" }, "Max (blank = ∞)"),
+        el("label", { class: "tiny" }, "Points"),
+        el("label", { class: "tiny" }, ""),
+      ]);
+      wrap.appendChild(header);
+      tiers.forEach((t, i) => {
+        const row = el("div", { class: "tier-row" });
+        row.appendChild(makeInput("text", t.label || "", v => tiers[i].label = v));
+        row.appendChild(makeInput("number", t.min, v => tiers[i].min = parseInt(v, 10)));
+        row.appendChild(makeInput("number", t.max == null ? "" : t.max, v => {
+          tiers[i].max = v === "" ? null : parseInt(v, 10);
+        }));
+        row.appendChild(makeInput("number", t.points, v => tiers[i].points = parseInt(v, 10)));
+        const del = el("button", { class: "danger", onclick: () => {
+          tiers.splice(i, 1); renderTiers(tiers);
+        } }, "×");
+        row.appendChild(del);
+        wrap.appendChild(row);
+      });
+      tournament.scoring_tiers = tiers;
+    }
+
+    function makeInput(type, value, onChange) {
+      const i = document.createElement("input");
+      i.type = type;
+      i.value = value;
+      i.addEventListener("input", () => onChange(i.value));
+      return i;
+    }
+
+    document.getElementById("add-tier").addEventListener("click", () => {
+      tournament.scoring_tiers.push({ min: 1, max: null, points: 0, label: "" });
+      renderTiers(tournament.scoring_tiers);
+    });
+
+    document.getElementById("save-tournament").addEventListener("click", async () => {
+      const name = document.getElementById("t-name").value.trim();
+      const cut_size = parseInt(document.getElementById("t-cut").value, 10);
+      const scoring_tiers = tournament.scoring_tiers.map(t => ({
+        label: t.label || null,
+        min: parseInt(t.min, 10),
+        max: t.max == null || t.max === "" ? null : parseInt(t.max, 10),
+        points: parseInt(t.points, 10),
+      }));
+      // Sort by min so display is stable.
+      scoring_tiers.sort((a, b) => a.min - b.min);
+      const { error } = await supabase
+        .from("tournaments")
+        .update({ name, cut_size, scoring_tiers })
+        .eq("id", tournament.id);
+      if (error) return flash(error.message, "err");
+      flash("Tournament saved. Recalculating points on existing days…", "info");
+      // Recompute points for every existing standing using the new tiers.
+      await recomputeAllPoints(scoring_tiers);
+      await loadAll();
+      flash("Saved and recomputed.", "ok");
+    });
+
+    async function recomputeAllPoints(tiers) {
+      const updates = standings.map(s => ({
+        id: s.id,
+        day_id: s.day_id,
+        player_id: s.player_id,
+        placement: s.placement,
+        points: pointsForPlacement(s.placement, tiers),
+      }));
+      if (updates.length === 0) return;
+      const { error } = await supabase.from("standings").upsert(updates);
+      if (error) throw error;
+    }
+
+    // -----------------------------------------------------------------
+    // Days list + import
+    // -----------------------------------------------------------------
+    function renderDays() {
+      const wrap = document.getElementById("days-list");
+      wrap.innerHTML = "";
+      if (days.length === 0) {
+        wrap.appendChild(el("div", { class: "empty" }, "No qualifier days yet — add one below."));
+        return;
+      }
+      days.forEach(d => {
+        const dayStandings = standings
+          .filter(s => s.day_id === d.id)
+          .sort((a, b) => a.placement - b.placement);
+        const block = el("div", { class: "day-block" });
+        const head = el("header");
+        head.appendChild(el("div", {}, [
+          el("strong", {}, d.name),
+          el("span", { class: "meta" }, d.event_date ? ` · ${fmtDate(d.event_date)}` : ""),
+          el("span", { class: "meta" }, ` · ${dayStandings.length} player${dayStandings.length === 1 ? "" : "s"}`),
+        ]));
+        const tools = el("div", { class: "toolbar" });
+        tools.appendChild(el("button", { class: "secondary",
+          onclick: () => openImport(d.id) }, dayStandings.length ? "Re-import" : "Import standings"));
+        tools.appendChild(el("button", { class: "danger",
+          onclick: () => deleteDay(d.id) }, "Delete day"));
+        head.appendChild(tools);
+        block.appendChild(head);
+
+        if (dayStandings.length) {
+          const list = el("ul", { class: "standings-list" });
+          dayStandings.forEach(s => {
+            const player = players.find(p => p.id === s.player_id);
+            const li = el("li");
+            li.appendChild(el("span", { class: "plc" }, `#${s.placement}`));
+            li.appendChild(el("span", {}, player ? player.name : "(unknown)"));
+            li.appendChild(el("span", { class: "pts" }, `${s.points} pts`));
+            li.appendChild(el("button", { class: "danger", style: "padding: 2px 8px; font-size:11px;",
+              onclick: () => deleteStanding(s.id) }, "×"));
+            list.appendChild(li);
+          });
+          block.appendChild(list);
+        }
+        wrap.appendChild(block);
+      });
+    }
+
+    document.getElementById("add-day").addEventListener("click", async () => {
+      const name = document.getElementById("new-day-name").value.trim();
+      const date = document.getElementById("new-day-date").value || null;
+      if (!name) return flash("Day needs a name.", "err");
+      const sort_order = days.length;
+      const { error } = await supabase.from("qualifier_days").insert({
+        tournament_id: tournament.id, name, event_date: date, sort_order,
+      });
+      if (error) return flash(error.message, "err");
+      document.getElementById("new-day-name").value = "";
+      document.getElementById("new-day-date").value = "";
+      await loadAll();
+      flash(`Added ${name}.`, "ok");
+    });
+
+    async function deleteDay(dayId) {
+      if (!confirm("Delete this day and all of its standings? This can't be undone.")) return;
+      const { error } = await supabase.from("qualifier_days").delete().eq("id", dayId);
+      if (error) return flash(error.message, "err");
+      await loadAll();
+      flash("Day deleted.", "ok");
+    }
+
+    async function deleteStanding(standingId) {
+      if (!confirm("Remove this player's result from this day?")) return;
+      const { error } = await supabase.from("standings").delete().eq("id", standingId);
+      if (error) return flash(error.message, "err");
+      await loadAll();
+    }
+
+    // -----------------------------------------------------------------
+    // Import flow
+    // -----------------------------------------------------------------
+    function openImport(dayId) {
+      editingDayId = dayId;
+      const d = days.find(x => x.id === dayId);
+      document.getElementById("import-day-name").textContent = `— ${d.name}`;
+      document.getElementById("import-text").value = "";
+      document.getElementById("import-preview").innerHTML = "";
+      importView.style.display = "";
+      importView.scrollIntoView({ behavior: "smooth" });
+    }
+
+    document.getElementById("cancel-import").addEventListener("click", () => {
+      importView.style.display = "none";
+      editingDayId = null;
+      pendingParsed = null;
+    });
+
+    document.getElementById("preview-import").addEventListener("click", () => {
+      const text = document.getElementById("import-text").value;
+      const parsed = parseStandings(text);
+      pendingParsed = parsed;
+      const wrap = document.getElementById("import-preview");
+      wrap.innerHTML = "";
+      if (!parsed.length) {
+        wrap.appendChild(el("div", { class: "status err" }, "Nothing parsed — paste one player per line."));
+        return;
+      }
+      const list = el("ul", { class: "standings-list" });
+      parsed.forEach(r => {
+        const pts = pointsForPlacement(r.placement, tournament.scoring_tiers);
+        const li = el("li");
+        li.appendChild(el("span", { class: "plc" }, `#${r.placement}`));
+        li.appendChild(el("span", {}, r.name));
+        li.appendChild(el("span", { class: "pts" }, `${pts} pts`));
+        li.appendChild(el("span", {}));
+        list.appendChild(li);
+      });
+      wrap.appendChild(el("div", { class: "status info" }, `Parsed ${parsed.length} players. Review then save.`));
+      wrap.appendChild(list);
+    });
+
+    document.getElementById("commit-import").addEventListener("click", async () => {
+      if (!editingDayId) return;
+      const parsed = pendingParsed ?? parseStandings(document.getElementById("import-text").value);
+      if (!parsed.length) return flash("Nothing to save.", "err");
+
+      // 1) Upsert players by name (within tournament)
+      const uniqueNames = [...new Set(parsed.map(p => p.name))];
+      const playerInsert = uniqueNames.map(name => ({ tournament_id: tournament.id, name }));
+      const { error: pErr } = await supabase
+        .from("players")
+        .upsert(playerInsert, { onConflict: "tournament_id,name", ignoreDuplicates: true });
+      if (pErr) return flash("Player upsert failed: " + pErr.message, "err");
+
+      // 2) Re-fetch players to get IDs
+      const { data: freshPlayers, error: pErr2 } = await supabase
+        .from("players")
+        .select("*")
+        .eq("tournament_id", tournament.id);
+      if (pErr2) return flash(pErr2.message, "err");
+      const byName = new Map(freshPlayers.map(p => [p.name, p.id]));
+
+      // 3) Replace standings for this day — delete + insert
+      const { error: dErr } = await supabase
+        .from("standings").delete().eq("day_id", editingDayId);
+      if (dErr) return flash(dErr.message, "err");
+
+      const inserts = parsed.map(r => ({
+        day_id: editingDayId,
+        player_id: byName.get(r.name),
+        placement: r.placement,
+        points: pointsForPlacement(r.placement, tournament.scoring_tiers),
+      })).filter(r => r.player_id);
+
+      const { error: sErr } = await supabase.from("standings").insert(inserts);
+      if (sErr) return flash(sErr.message, "err");
+
+      importView.style.display = "none";
+      editingDayId = null;
+      pendingParsed = null;
+      await loadAll();
+      flash(`Saved ${inserts.length} results.`, "ok");
+    });
+
+    // Kick off
+    bootstrap().catch(e => flash(e.message || String(e), "err"));
+  </script>
+</body>
+</html>
