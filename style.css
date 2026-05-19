@@ -276,6 +276,24 @@ button.danger:hover { background: rgba(168, 72, 43, 0.1); }
 .status.err  { background: rgba(168, 72, 43, 0.1); color: var(--bad);  border: 1px solid rgba(168, 72, 43, 0.3); }
 .status.info { background: rgba(30, 58, 44, 0.08); color: var(--accent); border: 1px solid rgba(30, 58, 44, 0.25); }
 
+.liga-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 14px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  background: var(--panel-2);
+  margin-bottom: 8px;
+}
+.liga-row.selected {
+  border-color: var(--accent);
+  background: rgba(30, 58, 44, 0.06);
+}
+.liga-row .liga-info strong { font-size: 15px; }
+.liga-row .liga-info .meta { color: var(--muted); font-size: 13px; }
+
 .day-block {
   border: 1px solid var(--border);
   border-radius: 3px;

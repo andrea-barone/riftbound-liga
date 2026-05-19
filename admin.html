@@ -57,9 +57,23 @@
       <pre style="background:var(--panel-2); padding:12px; border-radius:6px; font-size:13px;">INSERT INTO admins (email) VALUES ('<span id="denied-email-2"></span>');</pre>
     </section>
 
-    <!-- ============ Admin views ============ -->
+    <!-- ============ Liga list ============ -->
+    <section id="liga-list-view" class="card" style="display:none">
+      <h2>Ligas</h2>
+      <div id="liga-list"></div>
+
+      <hr style="border:none; border-top: 1px solid var(--border); margin: 16px 0;" />
+      <h2 style="font-size:11px">Create a new liga</h2>
+      <div class="row">
+        <div class="field" style="flex:2"><label>Name</label><input type="text" id="new-liga-name" placeholder="Spring 2026 Liga" /></div>
+        <div class="field" style="flex:0 0 120px"><label>Cut size</label><input type="number" id="new-liga-cut" value="8" min="1" /></div>
+        <button id="add-liga">Create liga</button>
+      </div>
+    </section>
+
+    <!-- ============ Selected liga: settings ============ -->
     <section id="tournament-view" class="card" style="display:none">
-      <h2>Tournament</h2>
+      <h2 id="tournament-view-title">Liga settings</h2>
       <div class="row">
         <div class="field"><label>Name</label><input type="text" id="t-name" /></div>
         <div class="field" style="flex:0 0 140px"><label>Cut size</label><input type="number" min="1" id="t-cut" /></div>
@@ -71,16 +85,18 @@
       </div>
       <div class="toolbar">
         <button id="save-tournament">Save</button>
+        <button id="delete-tournament" class="danger">Delete this liga</button>
         <span id="t-status" class="muted"></span>
       </div>
     </section>
 
+    <!-- ============ Selected liga: days ============ -->
     <section id="days-view" class="card" style="display:none">
-      <h2>Qualifier days</h2>
+      <h2 id="days-view-title">Qualifier days</h2>
       <div id="days-list"></div>
 
       <hr style="border:none; border-top: 1px solid var(--border); margin: 16px 0;" />
-      <h2 style="font-size:14px">Add a new qualifier day</h2>
+      <h2 style="font-size:11px">Add a new qualifier day</h2>
       <div class="row">
         <div class="field" style="flex:2"><label>Day name</label><input type="text" id="new-day-name" placeholder="Qualifier 1" /></div>
         <div class="field" style="flex:1"><label>Date (optional)</label><input type="date" id="new-day-date" /></div>
@@ -88,6 +104,7 @@
       </div>
     </section>
 
+    <!-- ============ Selected liga: import ============ -->
     <section id="import-view" class="card" style="display:none">
       <h2>Import standings <span id="import-day-name" class="muted"></span></h2>
       <p class="muted" style="margin-top:0; font-size:13px">
@@ -112,7 +129,7 @@
 
   <script type="module">
     import {
-      supabase, getTournament, getDays, getPlayers, getStandings,
+      supabase, getTournaments, getDays, getPlayers, getStandings,
       pointsForPlacement, parseStandings, el, fmtDate
     } from "./app.js";
 
@@ -130,13 +147,14 @@
     // -----------------------------------------------------------------
     // Auth
     // -----------------------------------------------------------------
-    const signInView = document.getElementById("signin-view");
-    const deniedView = document.getElementById("denied-view");
-    const tournamentView = document.getElementById("tournament-view");
-    const daysView = document.getElementById("days-view");
-    const importView = document.getElementById("import-view");
-    const signOutBtn = document.getElementById("sign-out");
-    const whoEl = document.getElementById("who");
+    const signInView      = document.getElementById("signin-view");
+    const deniedView      = document.getElementById("denied-view");
+    const ligaListView    = document.getElementById("liga-list-view");
+    const tournamentView  = document.getElementById("tournament-view");
+    const daysView        = document.getElementById("days-view");
+    const importView      = document.getElementById("import-view");
+    const signOutBtn      = document.getElementById("sign-out");
+    const whoEl           = document.getElementById("who");
 
     document.getElementById("send-link").addEventListener("click", async () => {
       const email = document.getElementById("email").value.trim();
@@ -156,15 +174,11 @@
 
     async function bootstrap() {
       const { data: { session } } = await supabase.auth.getSession();
-      if (!session) {
-        signInView.style.display = "";
-        return;
-      }
+      if (!session) { signInView.style.display = ""; return; }
       const email = session.user.email;
       whoEl.textContent = email;
       signOutBtn.style.display = "";
 
-      // Check admin allowlist (RLS only returns rows if caller is admin).
       const { data: adminRows, error: aErr } = await supabase
         .from("admins").select("email").limit(1);
       if (aErr || !adminRows || adminRows.length === 0) {
@@ -174,20 +188,19 @@
         return;
       }
 
-      tournamentView.style.display = "";
-      daysView.style.display = "";
+      ligaListView.style.display = "";
       await loadAll();
     }
 
-    supabase.auth.onAuthStateChange((_event, _session) => {
-      // After magic-link redirect, the session is parsed from the URL hash.
-      // We just re-bootstrap.
+    supabase.auth.onAuthStateChange(() => {
       bootstrap().catch(e => flash(e.message, "err"));
     });
 
     // -----------------------------------------------------------------
     // State
     // -----------------------------------------------------------------
+    let tournaments = [];
+    let selectedId = null;
     let tournament = null;
     let days = [];
     let players = [];
@@ -196,17 +209,113 @@
     let pendingParsed = null;
 
     async function loadAll() {
-      tournament = await getTournament();
-      renderTournament();
-      const res = await getStandings(tournament.id);
-      days = res.days;
-      standings = res.standings;
-      players = await getPlayers(tournament.id);
-      renderDays();
+      tournaments = await getTournaments();
+      renderLigaList();
+
+      if (selectedId && !tournaments.find(t => t.id === selectedId)) {
+        selectedId = null;
+      }
+      tournament = selectedId ? tournaments.find(t => t.id === selectedId) : null;
+
+      if (tournament) {
+        const res = await getStandings(tournament.id);
+        days = res.days;
+        standings = res.standings;
+        players = await getPlayers(tournament.id);
+        showSelectedCards();
+        renderTournament();
+        renderDays();
+      } else {
+        hideSelectedCards();
+        days = []; players = []; standings = [];
+      }
+    }
+
+    function showSelectedCards() {
+      tournamentView.style.display = "";
+      daysView.style.display = "";
+      document.getElementById("tournament-view-title").textContent =
+        `Liga settings · ${tournament.name}`;
+      document.getElementById("days-view-title").textContent =
+        `Qualifier days · ${tournament.name}`;
+    }
+    function hideSelectedCards() {
+      tournamentView.style.display = "none";
+      daysView.style.display = "none";
+      importView.style.display = "none";
+      editingDayId = null;
+      pendingParsed = null;
     }
 
     // -----------------------------------------------------------------
-    // Tournament editor
+    // Liga list
+    // -----------------------------------------------------------------
+    function renderLigaList() {
+      const wrap = document.getElementById("liga-list");
+      wrap.innerHTML = "";
+      if (tournaments.length === 0) {
+        wrap.appendChild(el("div", { class: "empty" },
+          "No ligas yet — create one below."));
+        return;
+      }
+      tournaments.forEach(t => {
+        const isSelected = t.id === selectedId;
+        const row = el("div", {
+          class: "liga-row" + (isSelected ? " selected" : "")
+        });
+        row.appendChild(el("div", { class: "liga-info" }, [
+          el("strong", {}, t.name),
+          el("span", { class: "meta" }, ` · Cut Top ${t.cut_size}`),
+        ]));
+        const tools = el("div", { class: "toolbar" });
+        tools.appendChild(el("button", {
+          class: isSelected ? "" : "secondary",
+          onclick: () => selectLiga(t.id),
+        }, isSelected ? "Managing ✓" : "Manage"));
+        tools.appendChild(el("button", {
+          class: "danger",
+          onclick: () => deleteLiga(t.id),
+        }, "Delete"));
+        row.appendChild(tools);
+        wrap.appendChild(row);
+      });
+    }
+
+    async function selectLiga(id) {
+      selectedId = id;
+      await loadAll();
+      tournamentView.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+
+    async function deleteLiga(id) {
+      const t = tournaments.find(x => x.id === id);
+      if (!t) return;
+      if (!confirm(`Delete liga "${t.name}" and ALL of its days, players, and standings? This cannot be undone.`)) return;
+      const { error } = await supabase.from("tournaments").delete().eq("id", id);
+      if (error) return flash(error.message, "err");
+      if (selectedId === id) selectedId = null;
+      await loadAll();
+      flash(`Deleted "${t.name}".`, "ok");
+    }
+
+    document.getElementById("add-liga").addEventListener("click", async () => {
+      const name = document.getElementById("new-liga-name").value.trim();
+      const cut = parseInt(document.getElementById("new-liga-cut").value, 10) || 8;
+      if (!name) return flash("Liga needs a name.", "err");
+      const { data, error } = await supabase
+        .from("tournaments")
+        .insert({ name, cut_size: cut })
+        .select().single();
+      if (error) return flash(error.message, "err");
+      document.getElementById("new-liga-name").value = "";
+      document.getElementById("new-liga-cut").value = "8";
+      selectedId = data.id;
+      await loadAll();
+      flash(`Created "${name}".`, "ok");
+    });
+
+    // -----------------------------------------------------------------
+    // Tournament editor (operates on `tournament`)
     // -----------------------------------------------------------------
     function renderTournament() {
       document.getElementById("t-name").value = tournament.name;
@@ -264,18 +373,20 @@
         max: t.max == null || t.max === "" ? null : parseInt(t.max, 10),
         points: parseInt(t.points, 10),
       }));
-      // Sort by min so display is stable.
       scoring_tiers.sort((a, b) => a.min - b.min);
       const { error } = await supabase
         .from("tournaments")
         .update({ name, cut_size, scoring_tiers })
         .eq("id", tournament.id);
       if (error) return flash(error.message, "err");
-      flash("Tournament saved. Recalculating points on existing days…", "info");
-      // Recompute points for every existing standing using the new tiers.
+      flash("Liga saved. Recalculating points on existing days…", "info");
       await recomputeAllPoints(scoring_tiers);
       await loadAll();
       flash("Saved and recomputed.", "ok");
+    });
+
+    document.getElementById("delete-tournament").addEventListener("click", () => {
+      if (tournament) deleteLiga(tournament.id);
     });
 
     async function recomputeAllPoints(tiers) {
@@ -292,7 +403,7 @@
     }
 
     // -----------------------------------------------------------------
-    // Days list + import
+    // Days list (for selected tournament)
     // -----------------------------------------------------------------
     function renderDays() {
       const wrap = document.getElementById("days-list");
@@ -339,6 +450,7 @@
     }
 
     document.getElementById("add-day").addEventListener("click", async () => {
+      if (!tournament) return flash("Select a liga first.", "err");
       const name = document.getElementById("new-day-name").value.trim();
       const date = document.getElementById("new-day-date").value || null;
       if (!name) return flash("Day needs a name.", "err");
@@ -412,11 +524,10 @@
     });
 
     document.getElementById("commit-import").addEventListener("click", async () => {
-      if (!editingDayId) return;
+      if (!editingDayId || !tournament) return;
       const parsed = pendingParsed ?? parseStandings(document.getElementById("import-text").value);
       if (!parsed.length) return flash("Nothing to save.", "err");
 
-      // 1) Upsert players by name (within tournament)
       const uniqueNames = [...new Set(parsed.map(p => p.name))];
       const playerInsert = uniqueNames.map(name => ({ tournament_id: tournament.id, name }));
       const { error: pErr } = await supabase
@@ -424,7 +535,6 @@
         .upsert(playerInsert, { onConflict: "tournament_id,name", ignoreDuplicates: true });
       if (pErr) return flash("Player upsert failed: " + pErr.message, "err");
 
-      // 2) Re-fetch players to get IDs
       const { data: freshPlayers, error: pErr2 } = await supabase
         .from("players")
         .select("*")
@@ -432,7 +542,6 @@
       if (pErr2) return flash(pErr2.message, "err");
       const byName = new Map(freshPlayers.map(p => [p.name, p.id]));
 
-      // 3) Replace standings for this day — delete + insert
       const { error: dErr } = await supabase
         .from("standings").delete().eq("day_id", editingDayId);
       if (dErr) return flash(dErr.message, "err");
@@ -454,7 +563,6 @@
       flash(`Saved ${inserts.length} results.`, "ok");
     });
 
-    // Kick off
     bootstrap().catch(e => flash(e.message || String(e), "err"));
   </script>
 </body>

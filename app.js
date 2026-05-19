@@ -9,15 +9,24 @@ export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 // Data fetching
 // ----------------------------------------------------------------------
 
-export async function getTournament() {
-  // For now, just use the first tournament. The schema supports multiple,
-  // but the UI assumes one championship at a time.
+export async function getTournaments() {
   const { data, error } = await supabase
     .from("tournaments")
     .select("*")
-    .order("created_at", { ascending: true })
-    .limit(1)
-    .single();
+    .order("created_at", { ascending: true });
+  if (error) throw error;
+  return data;
+}
+
+export async function getTournament(id) {
+  // If no id given, return the first tournament (back-compat).
+  let query = supabase.from("tournaments").select("*");
+  if (id) {
+    query = query.eq("id", id).single();
+  } else {
+    query = query.order("created_at", { ascending: true }).limit(1).single();
+  }
+  const { data, error } = await query;
   if (error) throw error;
   return data;
 }

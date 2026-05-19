@@ -18,51 +18,57 @@
     </a>
     <div class="divider"></div>
     <div class="title">
-      <h1 id="tournament-name">Riftbound Championship</h1>
+      <h1>Riftbound Championship</h1>
       <div class="subtitle">Season points across all qualifier days</div>
     </div>
   </header>
 
   <main>
-    <section class="card">
-      <h2>Standings</h2>
-      <div id="leaderboard">
-        <div class="empty">Loading…</div>
-      </div>
-    </section>
+    <div id="leagues">
+      <section class="card"><div class="empty">Loading…</div></section>
+    </div>
   </main>
 
   <footer class="site">
-    Updates whenever an admin posts new daily standings. Last refreshed:
+    Updates whenever an admin posts new daily standings · Last refreshed
     <span id="refreshed-at"></span>
   </footer>
 
   <script type="module">
     import {
-      getTournament, getPlayers, getStandings,
+      getTournaments, getPlayers, getStandings,
       computeLeaderboard, el, fmtDate
     } from "./app.js";
 
     async function render() {
-      const tournament = await getTournament();
-      document.getElementById("tournament-name").textContent = tournament.name;
-
-      const [players, { days, standings }] = await Promise.all([
-        getPlayers(tournament.id),
-        getStandings(tournament.id),
-      ]);
-
-      const leaderboard = computeLeaderboard(players, standings);
-      renderLeaderboard(leaderboard, days, tournament.cut_size);
+      const tournaments = await getTournaments();
+      const wrap = document.getElementById("leagues");
+      wrap.innerHTML = "";
+      if (tournaments.length === 0) {
+        wrap.appendChild(el("section", { class: "card" },
+          el("div", { class: "empty" }, "No ligas yet. Check back soon.")));
+        return;
+      }
+      // Fetch each tournament's data in parallel, then render in original order.
+      const datasets = await Promise.all(tournaments.map(async t => {
+        const [players, { days, standings }] = await Promise.all([
+          getPlayers(t.id),
+          getStandings(t.id),
+        ]);
+        return { t, players, days, standings };
+      }));
+      datasets.forEach(ds => wrap.appendChild(renderLeague(ds)));
       document.getElementById("refreshed-at").textContent = new Date().toLocaleString();
     }
 
-    function renderLeaderboard(rows, days, cutSize) {
-      const wrap = document.getElementById("leaderboard");
-      wrap.innerHTML = "";
+    function renderLeague({ t, players, days, standings }) {
+      const card = el("section", { class: "card" });
+      card.appendChild(el("h2", {}, t.name));
+
+      const rows = computeLeaderboard(players, standings);
       if (rows.length === 0) {
-        wrap.appendChild(el("div", { class: "empty" }, "No qualifier results posted yet."));
-        return;
+        card.appendChild(el("div", { class: "empty" }, "No qualifier results posted yet."));
+        return card;
       }
 
       const table = el("table");
@@ -100,24 +106,24 @@
         });
         tbody.appendChild(tr);
 
-        // Cut line
-        if (i + 1 === cutSize && rows.length > cutSize) {
+        if (i + 1 === t.cut_size && rows.length > t.cut_size) {
           tr.classList.add("cut-line");
-          const labelTr = el("tr", { class: "cut-label" }, [
-            el("td", { colspan: 4 + days.length }, `▼ Cut line — top ${cutSize} advance to finals ▼`)
-          ]);
-          tbody.appendChild(labelTr);
+          tbody.appendChild(el("tr", { class: "cut-label" }, [
+            el("td", { colspan: 4 + days.length },
+              `▼ Cut line — top ${t.cut_size} advance to finals ▼`)
+          ]));
         }
       });
       table.appendChild(tbody);
-      wrap.appendChild(table);
+      card.appendChild(table);
+      return card;
     }
 
     render().catch(err => {
       console.error(err);
-      document.getElementById("leaderboard").innerHTML =
-        `<div class="status err">Couldn't load standings: ${err.message || err}. ` +
-        `Make sure <code>config.js</code> points at your Supabase project and the schema is applied.</div>`;
+      document.getElementById("leagues").innerHTML =
+        `<section class="card"><div class="status err">Couldn't load standings: ${err.message || err}. ` +
+        `Make sure <code>config.js</code> points at your Supabase project and the schema is applied.</div></section>`;
     });
   </script>
 </body>

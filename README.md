@@ -1,9 +1,13 @@
 # Riftbound Championship Tracker
 
-A lightweight web tracker that sits on top of Carde.io to manage a multi-day
-Riftbound TCG championship. Carde.io runs the Swiss day; this app aggregates
-the final standings from each qualifier day into a single season-points
-leaderboard and shows the cut line for the final day.
+A lightweight web tracker that sits on top of Carde.io to manage one or more
+Riftbound TCG ligas. Carde.io runs the Swiss day; this app aggregates the
+final standings from each qualifier day into a season-points leaderboard
+(one per liga) and shows the cut line for each final day.
+
+The admin can run multiple parallel ligas at once (e.g. a casual league and
+a competitive championship simultaneously); the public page shows a separate
+leaderboard for each.
 
 - **Public leaderboard** — read-only, anyone with the URL can see it.
 - **Admin** — email login (Supabase magic link), restricted to allowlisted
