@@ -3,30 +3,27 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <meta name="theme-color" content="#1e3a2c" />
+  <meta name="theme-color" content="#4f46e5" />
   <title>Store Championships</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Oswald:wght@500;600;700&display=swap" />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" />
   <link rel="stylesheet" href="./style.css" />
 </head>
 <body>
   <header class="site">
-    <a class="brand" id="brand-link" href="./">
-      <span class="brand-mark" id="brand-mark">DAS<br>BRETT</span>
-      <span class="brand-sub" id="brand-sub">Spielebar</span>
-    </a>
-    <div class="divider"></div>
-    <div class="title">
-      <h1 id="page-title">Store Championships</h1>
-      <div class="subtitle" id="page-subtitle">Season points across all active ligas</div>
-    </div>
-    <div class="toolbar">
-      <a id="admin-link" href="./admin.html">Admin</a>
-    </div>
+    <a class="brand" href="./">Championships</a>
+    <nav class="nav">
+      <a href="./admin.html">Admin</a>
+    </nav>
   </header>
 
   <main>
+    <div class="page-hero">
+      <h1 id="page-title">Store Championships</h1>
+      <div class="subtitle" id="page-subtitle">Season points across all active ligas</div>
+    </div>
+
     <div id="content">
       <section class="card"><div class="empty">Loading…</div></section>
     </div>
@@ -70,17 +67,10 @@
         return;
       }
 
-      // Header swap to the org's identity
+      // Swap page title to the org's identity
       document.title = `${org.name} · Championships`;
       document.getElementById("page-title").textContent = org.name;
       document.getElementById("page-subtitle").textContent = "Season points across all active ligas";
-
-      // Brand strip stays "Das Brett" only when the slug IS dasbrett — otherwise we
-      // hide the brand mark to make the page feel owned by the visiting org.
-      if (slug !== "dasbrett") {
-        document.getElementById("brand-mark").style.display = "none";
-        document.getElementById("brand-sub").style.display = "none";
-      }
 
       const tournaments = await getTournaments(org.id);
       if (tournaments.length === 0) {

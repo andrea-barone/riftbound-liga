@@ -45,8 +45,8 @@ each.
 1. In your Supabase dashboard, open **SQL Editor** → **New query**.
 2. Paste the contents of `schema.sql` and run it.
 3. In a second query, paste `schema-v2-multi-org.sql` and run it. This adds
-   the organization layer on top of v1 and migrates any existing data
-   under a default org with slug `dasbrett`.
+   the organization layer on top of v1 and migrates any existing v1 data
+   under a placeholder default org. You'll rename that org on first sign-in.
 
 (Both scripts are safe to re-run.)
 
@@ -58,7 +58,7 @@ For a fresh install:
 1. Open `/admin.html` (after you've completed the rest of setup below).
 2. Enter your email; click the magic link.
 3. You'll be prompted to create your organization. Pick a name and a
-   URL slug (e.g. `dasbrett`).
+   URL slug (e.g. `acme-games`).
 4. You're now the first admin of that org. From the **Team** card you can
    invite additional staff emails to manage the same org.
 
