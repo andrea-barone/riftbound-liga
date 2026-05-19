@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta name="theme-color" content="#1e3a2c" />
-  <title>Das Brett · Riftbound Championship</title>
+  <title>Store Championships</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Oswald:wght@500;600;700&display=swap" />
@@ -12,19 +12,22 @@
 </head>
 <body>
   <header class="site">
-    <a class="brand" href="https://dasbrett.bar/" target="_blank" rel="noopener">
-      <span class="brand-mark">DAS<br>BRETT</span>
-      <span class="brand-sub">Spielebar</span>
+    <a class="brand" id="brand-link" href="./">
+      <span class="brand-mark" id="brand-mark">DAS<br>BRETT</span>
+      <span class="brand-sub" id="brand-sub">Spielebar</span>
     </a>
     <div class="divider"></div>
     <div class="title">
-      <h1>Riftbound Championship</h1>
-      <div class="subtitle">Season points across all qualifier days</div>
+      <h1 id="page-title">Store Championships</h1>
+      <div class="subtitle" id="page-subtitle">Season points across all active ligas</div>
+    </div>
+    <div class="toolbar">
+      <a id="admin-link" href="./admin.html">Admin</a>
     </div>
   </header>
 
   <main>
-    <div id="leagues">
+    <div id="content">
       <section class="card"><div class="empty">Loading…</div></section>
     </div>
   </main>
@@ -36,29 +39,62 @@
 
   <script type="module">
     import {
-      getTournaments, getPlayers, getStandings,
-      computeLeaderboard, el, fmtDate
+      getOrganizations, getOrganizationBySlug, getTournaments,
+      getPlayers, getStandings, computeLeaderboard, el, fmtDate
     } from "./app.js";
 
+    const params = new URLSearchParams(location.search);
+    const orgSlug = (params.get("org") || "").toLowerCase();
+
     async function render() {
-      const tournaments = await getTournaments();
-      const wrap = document.getElementById("leagues");
-      wrap.innerHTML = "";
-      if (tournaments.length === 0) {
-        wrap.appendChild(el("section", { class: "card" },
-          el("div", { class: "empty" }, "No ligas yet. Check back soon.")));
+      if (orgSlug) {
+        await renderOrgPage(orgSlug);
+      } else {
+        await renderDirectory();
+      }
+      document.getElementById("refreshed-at").textContent = new Date().toLocaleString();
+    }
+
+    // ============ Single-org leaderboards ============
+    async function renderOrgPage(slug) {
+      const org = await getOrganizationBySlug(slug);
+      const content = document.getElementById("content");
+      content.innerHTML = "";
+
+      if (!org) {
+        document.getElementById("page-title").textContent = "Not found";
+        document.getElementById("page-subtitle").textContent = "";
+        content.appendChild(el("section", { class: "card" },
+          el("div", { class: "status err" },
+            `No organization with slug "${slug}". Check the link or visit the home page for the directory.`)));
         return;
       }
-      // Fetch each tournament's data in parallel, then render in original order.
+
+      // Header swap to the org's identity
+      document.title = `${org.name} · Championships`;
+      document.getElementById("page-title").textContent = org.name;
+      document.getElementById("page-subtitle").textContent = "Season points across all active ligas";
+
+      // Brand strip stays "Das Brett" only when the slug IS dasbrett — otherwise we
+      // hide the brand mark to make the page feel owned by the visiting org.
+      if (slug !== "dasbrett") {
+        document.getElementById("brand-mark").style.display = "none";
+        document.getElementById("brand-sub").style.display = "none";
+      }
+
+      const tournaments = await getTournaments(org.id);
+      if (tournaments.length === 0) {
+        content.appendChild(el("section", { class: "card" },
+          el("div", { class: "empty" }, "No ligas posted yet. Check back soon.")));
+        return;
+      }
       const datasets = await Promise.all(tournaments.map(async t => {
         const [players, { days, standings }] = await Promise.all([
-          getPlayers(t.id),
-          getStandings(t.id),
+          getPlayers(t.id), getStandings(t.id),
         ]);
         return { t, players, days, standings };
       }));
-      datasets.forEach(ds => wrap.appendChild(renderLeague(ds)));
-      document.getElementById("refreshed-at").textContent = new Date().toLocaleString();
+      datasets.forEach(ds => content.appendChild(renderLeague(ds)));
     }
 
     function renderLeague({ t, players, days, standings }) {
@@ -73,7 +109,7 @@
 
       const table = el("table");
       const thead = el("thead");
-      const headRow = el("tr", {}, [
+      thead.appendChild(el("tr", {}, [
         el("th", {}, "#"),
         el("th", {}, "Player"),
         el("th", {}, "Total"),
@@ -82,8 +118,7 @@
           el("th", { class: "day", title: d.name },
             d.event_date ? fmtDate(d.event_date) : d.name)
         ),
-      ]);
-      thead.appendChild(headRow);
+      ]));
       table.appendChild(thead);
 
       const tbody = el("tbody");
@@ -119,11 +154,39 @@
       return card;
     }
 
+    // ============ No slug → directory of organizations ============
+    async function renderDirectory() {
+      document.getElementById("page-title").textContent = "Store Championships";
+      document.getElementById("page-subtitle").textContent = "Pick an organization to see its leaderboards";
+
+      const content = document.getElementById("content");
+      content.innerHTML = "";
+      const orgs = await getOrganizations();
+      if (orgs.length === 0) {
+        content.appendChild(el("section", { class: "card" },
+          el("div", { class: "empty" },
+            "No organizations yet. If you're an admin, sign in and create one.")));
+        return;
+      }
+      const card = el("section", { class: "card" });
+      card.appendChild(el("h2", {}, "Organizations"));
+      const list = el("div", { class: "org-list" });
+      orgs.forEach(o => {
+        const row = el("a", { class: "org-link", href: `?org=${encodeURIComponent(o.slug)}` }, [
+          el("strong", {}, o.name),
+          el("span", { class: "meta" }, ` · /${o.slug}`),
+        ]);
+        list.appendChild(row);
+      });
+      card.appendChild(list);
+      content.appendChild(card);
+    }
+
     render().catch(err => {
       console.error(err);
-      document.getElementById("leagues").innerHTML =
-        `<section class="card"><div class="status err">Couldn't load standings: ${err.message || err}. ` +
-        `Make sure <code>config.js</code> points at your Supabase project and the schema is applied.</div></section>`;
+      document.getElementById("content").innerHTML =
+        `<section class="card"><div class="status err">Couldn't load: ${err.message || err}. ` +
+        `Make sure <code>config.js</code> points at your Supabase project and both schema files have been applied.</div></section>`;
     });
   </script>
 </body>

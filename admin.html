@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta name="theme-color" content="#1e3a2c" />
-  <title>Das Brett · Championship Admin</title>
+  <title>Store Championships · Admin</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Oswald:wght@500;600;700&display=swap" />
@@ -12,17 +12,17 @@
 </head>
 <body>
   <header class="site">
-    <a class="brand" href="./index.html">
+    <a class="brand" href="./">
       <span class="brand-mark">DAS<br>BRETT</span>
       <span class="brand-sub">Spielebar</span>
     </a>
     <div class="divider"></div>
     <div class="title">
-      <h1>Championship Admin</h1>
-      <div class="subtitle">Manage the championship — only allowlisted emails can edit.</div>
+      <h1 id="admin-title">Championship Admin</h1>
+      <div class="subtitle" id="admin-subtitle">Sign in to manage your organization.</div>
     </div>
     <div class="toolbar">
-      <a href="./index.html">← Public leaderboard</a>
+      <a href="./">← Public</a>
       <span id="who" class="muted"></span>
       <button id="sign-out" class="secondary" style="display:none">Sign out</button>
     </div>
@@ -31,33 +31,109 @@
   <main>
     <div id="status-area"></div>
 
-    <!-- ============ Sign-in view ============ -->
+    <!-- Sign-in -->
     <section id="signin-view" class="card" style="display:none">
       <h2>Sign in</h2>
       <p class="muted" style="margin-top:0">
-        Enter your email and we'll send you a one-time login link.
-        Your email must already be in the <code>admins</code> table.
+        Enter your email — we'll send you a one-time login link.
+        First-time users are prompted to create their organization on the
+        next screen.
       </p>
       <div class="row">
         <div class="field" style="flex:1">
           <label for="email">Email</label>
-          <input type="email" id="email" placeholder="you@store.example" />
+          <input type="email" id="email" placeholder="you@example.com" />
         </div>
         <button id="send-link">Send link</button>
       </div>
     </section>
 
-    <!-- ============ Not-allowed view ============ -->
-    <section id="denied-view" class="card" style="display:none">
-      <h2>Not an admin</h2>
-      <p>
-        You're signed in as <strong id="denied-email"></strong>, but this email
-        isn't in the admin allowlist. Ask the person who set up Supabase to run:
+    <!-- Create organization (shown when signed in with zero orgs) -->
+    <section id="create-org-view" class="card" style="display:none">
+      <h2>Create your organization</h2>
+      <p class="muted" style="margin-top:0">
+        You're not yet a member of any organization. Create one to start
+        managing championships under it.
       </p>
-      <pre style="background:var(--panel-2); padding:12px; border-radius:6px; font-size:13px;">INSERT INTO admins (email) VALUES ('<span id="denied-email-2"></span>');</pre>
+      <div class="row">
+        <div class="field" style="flex:2">
+          <label>Organization name</label>
+          <input type="text" id="new-org-name" placeholder="Das Brett · Spielebar" />
+        </div>
+        <div class="field" style="flex:1">
+          <label>URL slug</label>
+          <input type="text" id="new-org-slug" placeholder="dasbrett" />
+        </div>
+        <button id="create-org">Create</button>
+      </div>
+      <p class="muted" style="font-size:12px; margin-top:6px;">
+        The slug becomes part of the public URL: <code>?org=&lt;slug&gt;</code>.
+        Lowercase letters, digits and hyphens; 3–32 characters.
+      </p>
     </section>
 
-    <!-- ============ Liga list ============ -->
+    <!-- Org picker (shown when signed in with 1+ orgs and none selected) -->
+    <section id="org-picker-view" class="card" style="display:none">
+      <h2>Your organizations</h2>
+      <div id="org-list"></div>
+
+      <hr style="border:none; border-top: 1px solid var(--border); margin: 16px 0;" />
+      <h2 style="font-size:11px">Create a new organization</h2>
+      <div class="row">
+        <div class="field" style="flex:2">
+          <label>Name</label>
+          <input type="text" id="picker-org-name" placeholder="Acme Game Store" />
+        </div>
+        <div class="field" style="flex:1">
+          <label>Slug</label>
+          <input type="text" id="picker-org-slug" placeholder="acme" />
+        </div>
+        <button id="picker-create-org">Create</button>
+      </div>
+    </section>
+
+    <!-- Org-scope header (shown when an org is selected) -->
+    <section id="org-banner" class="card" style="display:none">
+      <div class="org-banner">
+        <div>
+          <div class="muted" style="font-size:11px; letter-spacing:1.5px; text-transform:uppercase;">Managing</div>
+          <h2 id="org-banner-name" style="margin:2px 0 0 0; color:var(--text); letter-spacing:0.3px;"></h2>
+          <div class="muted" style="font-size:13px; margin-top:2px;">
+            Public link: <a id="org-public-link" target="_blank" rel="noopener"></a>
+          </div>
+        </div>
+        <button id="switch-org" class="secondary">Switch organization</button>
+      </div>
+    </section>
+
+    <!-- Org settings -->
+    <section id="org-settings-view" class="card" style="display:none">
+      <h2>Organization settings</h2>
+      <div class="row">
+        <div class="field" style="flex:2"><label>Name</label><input type="text" id="org-name" /></div>
+        <div class="field" style="flex:1"><label>Slug</label><input type="text" id="org-slug" /></div>
+      </div>
+      <div class="toolbar">
+        <button id="save-org">Save</button>
+        <button id="delete-org" class="danger">Delete organization</button>
+      </div>
+    </section>
+
+    <!-- Team (admin emails for this org) -->
+    <section id="team-view" class="card" style="display:none">
+      <h2>Team</h2>
+      <div id="team-list" style="margin-bottom:14px;"></div>
+      <div class="row">
+        <div class="field" style="flex:1"><label>Invite admin by email</label><input type="email" id="new-admin-email" placeholder="staff@example.com" /></div>
+        <button id="add-admin">Add</button>
+      </div>
+      <p class="muted" style="font-size:12px;">
+        The added email can sign in via magic link and manage this organization.
+        They won't see other orgs they don't belong to.
+      </p>
+    </section>
+
+    <!-- Liga list -->
     <section id="liga-list-view" class="card" style="display:none">
       <h2>Ligas</h2>
       <div id="liga-list"></div>
@@ -71,7 +147,7 @@
       </div>
     </section>
 
-    <!-- ============ Selected liga: settings ============ -->
+    <!-- Liga settings -->
     <section id="tournament-view" class="card" style="display:none">
       <h2 id="tournament-view-title">Liga settings</h2>
       <div class="row">
@@ -86,11 +162,10 @@
       <div class="toolbar">
         <button id="save-tournament">Save</button>
         <button id="delete-tournament" class="danger">Delete this liga</button>
-        <span id="t-status" class="muted"></span>
       </div>
     </section>
 
-    <!-- ============ Selected liga: days ============ -->
+    <!-- Days -->
     <section id="days-view" class="card" style="display:none">
       <h2 id="days-view-title">Qualifier days</h2>
       <div id="days-list"></div>
@@ -104,7 +179,7 @@
       </div>
     </section>
 
-    <!-- ============ Selected liga: import ============ -->
+    <!-- Import -->
     <section id="import-view" class="card" style="display:none">
       <h2>Import standings <span id="import-day-name" class="muted"></span></h2>
       <p class="muted" style="margin-top:0; font-size:13px">
@@ -129,7 +204,11 @@
 
   <script type="module">
     import {
-      supabase, getTournaments, getDays, getPlayers, getStandings,
+      supabase,
+      getOrganizations, getOrganizationBySlug, getMyOrganizations,
+      createOrganization, updateOrganization, deleteOrganization,
+      getOrgAdmins, addOrgAdmin, removeOrgAdmin,
+      getTournaments, getDays, getPlayers, getStandings,
       pointsForPlacement, parseStandings, el, fmtDate
     } from "./app.js";
 
@@ -145,111 +224,270 @@
     }
 
     // -----------------------------------------------------------------
+    // View handles
+    // -----------------------------------------------------------------
+    const views = {
+      signin:        document.getElementById("signin-view"),
+      createOrg:     document.getElementById("create-org-view"),
+      orgPicker:     document.getElementById("org-picker-view"),
+      orgBanner:     document.getElementById("org-banner"),
+      orgSettings:   document.getElementById("org-settings-view"),
+      team:          document.getElementById("team-view"),
+      ligaList:      document.getElementById("liga-list-view"),
+      tournament:    document.getElementById("tournament-view"),
+      days:          document.getElementById("days-view"),
+      import_:       document.getElementById("import-view"),
+    };
+    function showOnly(...keys) {
+      Object.entries(views).forEach(([k, v]) => v.style.display = keys.includes(k) ? "" : "none");
+    }
+
+    // -----------------------------------------------------------------
     // Auth
     // -----------------------------------------------------------------
-    const signInView      = document.getElementById("signin-view");
-    const deniedView      = document.getElementById("denied-view");
-    const ligaListView    = document.getElementById("liga-list-view");
-    const tournamentView  = document.getElementById("tournament-view");
-    const daysView        = document.getElementById("days-view");
-    const importView      = document.getElementById("import-view");
-    const signOutBtn      = document.getElementById("sign-out");
-    const whoEl           = document.getElementById("who");
-
     document.getElementById("send-link").addEventListener("click", async () => {
       const email = document.getElementById("email").value.trim();
       if (!email) return flash("Enter your email.", "err");
       const { error } = await supabase.auth.signInWithOtp({
-        email,
-        options: { emailRedirectTo: window.location.href },
+        email, options: { emailRedirectTo: window.location.href },
       });
       if (error) return flash(error.message, "err");
       flash(`Login link sent to ${email}. Check your inbox.`, "ok");
     });
 
-    signOutBtn.addEventListener("click", async () => {
+    document.getElementById("sign-out").addEventListener("click", async () => {
       await supabase.auth.signOut();
-      location.reload();
-    });
-
-    async function bootstrap() {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) { signInView.style.display = ""; return; }
-      const email = session.user.email;
-      whoEl.textContent = email;
-      signOutBtn.style.display = "";
-
-      const { data: adminRows, error: aErr } = await supabase
-        .from("admins").select("email").limit(1);
-      if (aErr || !adminRows || adminRows.length === 0) {
-        document.getElementById("denied-email").textContent = email;
-        document.getElementById("denied-email-2").textContent = email;
-        deniedView.style.display = "";
-        return;
-      }
-
-      ligaListView.style.display = "";
-      await loadAll();
-    }
-
-    supabase.auth.onAuthStateChange(() => {
-      bootstrap().catch(e => flash(e.message, "err"));
+      location.assign("./admin.html");
     });
 
     // -----------------------------------------------------------------
     // State
     // -----------------------------------------------------------------
+    let myOrgs = [];
+    let org = null;             // currently-selected org
     let tournaments = [];
-    let selectedId = null;
+    let selectedTournamentId = null;
     let tournament = null;
-    let days = [];
-    let players = [];
-    let standings = [];
+    let days = [], players = [], standings = [];
     let editingDayId = null;
     let pendingParsed = null;
 
-    async function loadAll() {
-      tournaments = await getTournaments();
+    async function bootstrap() {
+      const { data: { session } } = await supabase.auth.getSession();
+      const whoEl = document.getElementById("who");
+      const signOutBtn = document.getElementById("sign-out");
+
+      if (!session) {
+        whoEl.textContent = "";
+        signOutBtn.style.display = "none";
+        showOnly("signin");
+        return;
+      }
+      whoEl.textContent = session.user.email;
+      signOutBtn.style.display = "";
+
+      myOrgs = await getMyOrganizations();
+
+      if (myOrgs.length === 0) {
+        showOnly("createOrg");
+        return;
+      }
+
+      // If admin.html?org=slug is in the URL, try to auto-select it.
+      const params = new URLSearchParams(location.search);
+      const wantedSlug = (params.get("org") || "").toLowerCase();
+      let target = wantedSlug ? myOrgs.find(o => o.slug === wantedSlug) : null;
+      if (!target && myOrgs.length === 1) target = myOrgs[0];
+
+      if (target) {
+        await selectOrg(target.id);
+      } else {
+        showOrgPicker();
+      }
+    }
+
+    supabase.auth.onAuthStateChange(() => {
+      bootstrap().catch(e => flash(e.message || String(e), "err"));
+    });
+
+    // -----------------------------------------------------------------
+    // Create-org flows (both first-time and additional)
+    // -----------------------------------------------------------------
+    async function handleCreateOrg(nameEl, slugEl) {
+      const name = document.getElementById(nameEl).value.trim();
+      const slug = document.getElementById(slugEl).value.trim().toLowerCase();
+      if (!name || !slug) return flash("Name and slug are required.", "err");
+      if (!/^[a-z0-9][a-z0-9-]{1,30}[a-z0-9]$/.test(slug)) {
+        return flash("Slug must be 3–32 chars, lowercase letters/digits/hyphens, can't start or end with a hyphen.", "err");
+      }
+      try {
+        const newOrg = await createOrganization(slug, name);
+        flash(`Created "${name}".`, "ok");
+        myOrgs = await getMyOrganizations();
+        await selectOrg(newOrg.id);
+      } catch (e) {
+        flash(e.message || String(e), "err");
+      }
+    }
+    document.getElementById("create-org").addEventListener("click",
+      () => handleCreateOrg("new-org-name", "new-org-slug"));
+    document.getElementById("picker-create-org").addEventListener("click",
+      () => handleCreateOrg("picker-org-name", "picker-org-slug"));
+
+    // -----------------------------------------------------------------
+    // Org picker
+    // -----------------------------------------------------------------
+    function showOrgPicker() {
+      org = null;
+      showOnly("orgPicker");
+      const wrap = document.getElementById("org-list");
+      wrap.innerHTML = "";
+      myOrgs.forEach(o => {
+        const row = el("div", { class: "liga-row" }, [
+          el("div", { class: "liga-info" }, [
+            el("strong", {}, o.name),
+            el("span", { class: "meta" }, ` · /${o.slug}`),
+          ]),
+        ]);
+        const tools = el("div", { class: "toolbar" });
+        tools.appendChild(el("button", {
+          onclick: () => selectOrg(o.id),
+        }, "Manage"));
+        row.appendChild(tools);
+        wrap.appendChild(row);
+      });
+    }
+
+    document.getElementById("switch-org").addEventListener("click", () => {
+      // Reset URL ?org param when switching
+      history.replaceState(null, "", "./admin.html");
+      org = null; selectedTournamentId = null; tournament = null;
+      tournaments = []; days = []; players = []; standings = [];
+      showOrgPicker();
+    });
+
+    // -----------------------------------------------------------------
+    // Select an org → load all its data
+    // -----------------------------------------------------------------
+    async function selectOrg(id) {
+      org = myOrgs.find(o => o.id === id);
+      if (!org) {
+        showOrgPicker();
+        return;
+      }
+      // Reflect in URL so refresh keeps the same org
+      const params = new URLSearchParams();
+      params.set("org", org.slug);
+      history.replaceState(null, "", `./admin.html?${params.toString()}`);
+
+      document.getElementById("org-banner-name").textContent = org.name;
+      const publicLink = `./?org=${encodeURIComponent(org.slug)}`;
+      const linkEl = document.getElementById("org-public-link");
+      linkEl.href = publicLink;
+      linkEl.textContent = `${location.origin}${location.pathname.replace(/admin\.html$/, "")}?org=${org.slug}`;
+      document.getElementById("org-name").value = org.name;
+      document.getElementById("org-slug").value = org.slug;
+
+      showOnly("orgBanner", "orgSettings", "team", "ligaList");
+
+      await refreshTournaments();
+      await refreshTeam();
+    }
+
+    // -----------------------------------------------------------------
+    // Org settings: save / delete
+    // -----------------------------------------------------------------
+    document.getElementById("save-org").addEventListener("click", async () => {
+      const name = document.getElementById("org-name").value.trim();
+      const slug = document.getElementById("org-slug").value.trim().toLowerCase();
+      if (!name || !slug) return flash("Name and slug required.", "err");
+      try {
+        await updateOrganization(org.id, { name, slug });
+        flash("Saved.", "ok");
+        myOrgs = await getMyOrganizations();
+        await selectOrg(org.id);
+      } catch (e) { flash(e.message, "err"); }
+    });
+
+    document.getElementById("delete-org").addEventListener("click", async () => {
+      if (!confirm(`Delete organization "${org.name}" and ALL its ligas, days, and standings? This cannot be undone.`)) return;
+      try {
+        await deleteOrganization(org.id);
+        flash("Organization deleted.", "ok");
+        myOrgs = await getMyOrganizations();
+        history.replaceState(null, "", "./admin.html");
+        if (myOrgs.length === 0) showOnly("createOrg");
+        else showOrgPicker();
+      } catch (e) { flash(e.message, "err"); }
+    });
+
+    // -----------------------------------------------------------------
+    // Team management
+    // -----------------------------------------------------------------
+    async function refreshTeam() {
+      const wrap = document.getElementById("team-list");
+      wrap.innerHTML = "";
+      const admins = await getOrgAdmins(org.id);
+      admins.forEach(a => {
+        const row = el("div", { class: "liga-row" }, [
+          el("div", { class: "liga-info" }, [
+            el("strong", {}, a.email),
+          ]),
+        ]);
+        const tools = el("div", { class: "toolbar" });
+        tools.appendChild(el("button", {
+          class: "danger",
+          onclick: async () => {
+            if (admins.length === 1) return flash("Can't remove the last admin.", "err");
+            if (!confirm(`Remove ${a.email}?`)) return;
+            try { await removeOrgAdmin(org.id, a.email); await refreshTeam(); flash("Removed.", "ok"); }
+            catch (e) { flash(e.message, "err"); }
+          },
+        }, "Remove"));
+        row.appendChild(tools);
+        wrap.appendChild(row);
+      });
+    }
+    document.getElementById("add-admin").addEventListener("click", async () => {
+      const email = document.getElementById("new-admin-email").value.trim();
+      if (!email) return flash("Enter an email.", "err");
+      try {
+        await addOrgAdmin(org.id, email);
+        document.getElementById("new-admin-email").value = "";
+        await refreshTeam();
+        flash("Admin added.", "ok");
+      } catch (e) { flash(e.message, "err"); }
+    });
+
+    // -----------------------------------------------------------------
+    // Liga list (within selected org)
+    // -----------------------------------------------------------------
+    async function refreshTournaments() {
+      tournaments = await getTournaments(org.id);
       renderLigaList();
 
-      if (selectedId && !tournaments.find(t => t.id === selectedId)) {
-        selectedId = null;
+      if (selectedTournamentId && !tournaments.find(t => t.id === selectedTournamentId)) {
+        selectedTournamentId = null;
       }
-      tournament = selectedId ? tournaments.find(t => t.id === selectedId) : null;
-
+      tournament = selectedTournamentId ? tournaments.find(t => t.id === selectedTournamentId) : null;
       if (tournament) {
         const res = await getStandings(tournament.id);
-        days = res.days;
-        standings = res.standings;
+        days = res.days; standings = res.standings;
         players = await getPlayers(tournament.id);
-        showSelectedCards();
+        views.tournament.style.display = "";
+        views.days.style.display = "";
+        document.getElementById("tournament-view-title").textContent = `Liga settings · ${tournament.name}`;
+        document.getElementById("days-view-title").textContent = `Qualifier days · ${tournament.name}`;
         renderTournament();
         renderDays();
       } else {
-        hideSelectedCards();
+        views.tournament.style.display = "none";
+        views.days.style.display = "none";
+        views.import_.style.display = "none";
         days = []; players = []; standings = [];
       }
     }
 
-    function showSelectedCards() {
-      tournamentView.style.display = "";
-      daysView.style.display = "";
-      document.getElementById("tournament-view-title").textContent =
-        `Liga settings · ${tournament.name}`;
-      document.getElementById("days-view-title").textContent =
-        `Qualifier days · ${tournament.name}`;
-    }
-    function hideSelectedCards() {
-      tournamentView.style.display = "none";
-      daysView.style.display = "none";
-      importView.style.display = "none";
-      editingDayId = null;
-      pendingParsed = null;
-    }
-
-    // -----------------------------------------------------------------
-    // Liga list
-    // -----------------------------------------------------------------
     function renderLigaList() {
       const wrap = document.getElementById("liga-list");
       wrap.innerHTML = "";
@@ -259,10 +497,8 @@
         return;
       }
       tournaments.forEach(t => {
-        const isSelected = t.id === selectedId;
-        const row = el("div", {
-          class: "liga-row" + (isSelected ? " selected" : "")
-        });
+        const isSelected = t.id === selectedTournamentId;
+        const row = el("div", { class: "liga-row" + (isSelected ? " selected" : "") });
         row.appendChild(el("div", { class: "liga-info" }, [
           el("strong", {}, t.name),
           el("span", { class: "meta" }, ` · Cut Top ${t.cut_size}`),
@@ -282,9 +518,9 @@
     }
 
     async function selectLiga(id) {
-      selectedId = id;
-      await loadAll();
-      tournamentView.scrollIntoView({ behavior: "smooth", block: "start" });
+      selectedTournamentId = id;
+      await refreshTournaments();
+      views.tournament.scrollIntoView({ behavior: "smooth", block: "start" });
     }
 
     async function deleteLiga(id) {
@@ -293,8 +529,8 @@
       if (!confirm(`Delete liga "${t.name}" and ALL of its days, players, and standings? This cannot be undone.`)) return;
       const { error } = await supabase.from("tournaments").delete().eq("id", id);
       if (error) return flash(error.message, "err");
-      if (selectedId === id) selectedId = null;
-      await loadAll();
+      if (selectedTournamentId === id) selectedTournamentId = null;
+      await refreshTournaments();
       flash(`Deleted "${t.name}".`, "ok");
     }
 
@@ -304,18 +540,18 @@
       if (!name) return flash("Liga needs a name.", "err");
       const { data, error } = await supabase
         .from("tournaments")
-        .insert({ name, cut_size: cut })
+        .insert({ name, cut_size: cut, organization_id: org.id })
         .select().single();
       if (error) return flash(error.message, "err");
       document.getElementById("new-liga-name").value = "";
       document.getElementById("new-liga-cut").value = "8";
-      selectedId = data.id;
-      await loadAll();
+      selectedTournamentId = data.id;
+      await refreshTournaments();
       flash(`Created "${name}".`, "ok");
     });
 
     // -----------------------------------------------------------------
-    // Tournament editor (operates on `tournament`)
+    // Tournament editor
     // -----------------------------------------------------------------
     function renderTournament() {
       document.getElementById("t-name").value = tournament.name;
@@ -381,7 +617,7 @@
       if (error) return flash(error.message, "err");
       flash("Liga saved. Recalculating points on existing days…", "info");
       await recomputeAllPoints(scoring_tiers);
-      await loadAll();
+      await refreshTournaments();
       flash("Saved and recomputed.", "ok");
     });
 
@@ -391,11 +627,8 @@
 
     async function recomputeAllPoints(tiers) {
       const updates = standings.map(s => ({
-        id: s.id,
-        day_id: s.day_id,
-        player_id: s.player_id,
-        placement: s.placement,
-        points: pointsForPlacement(s.placement, tiers),
+        id: s.id, day_id: s.day_id, player_id: s.player_id,
+        placement: s.placement, points: pointsForPlacement(s.placement, tiers),
       }));
       if (updates.length === 0) return;
       const { error } = await supabase.from("standings").upsert(updates);
@@ -403,7 +636,7 @@
     }
 
     // -----------------------------------------------------------------
-    // Days list (for selected tournament)
+    // Days
     // -----------------------------------------------------------------
     function renderDays() {
       const wrap = document.getElementById("days-list");
@@ -461,7 +694,7 @@
       if (error) return flash(error.message, "err");
       document.getElementById("new-day-name").value = "";
       document.getElementById("new-day-date").value = "";
-      await loadAll();
+      await refreshTournaments();
       flash(`Added ${name}.`, "ok");
     });
 
@@ -469,7 +702,7 @@
       if (!confirm("Delete this day and all of its standings? This can't be undone.")) return;
       const { error } = await supabase.from("qualifier_days").delete().eq("id", dayId);
       if (error) return flash(error.message, "err");
-      await loadAll();
+      await refreshTournaments();
       flash("Day deleted.", "ok");
     }
 
@@ -477,7 +710,7 @@
       if (!confirm("Remove this player's result from this day?")) return;
       const { error } = await supabase.from("standings").delete().eq("id", standingId);
       if (error) return flash(error.message, "err");
-      await loadAll();
+      await refreshTournaments();
     }
 
     // -----------------------------------------------------------------
@@ -489,16 +722,14 @@
       document.getElementById("import-day-name").textContent = `— ${d.name}`;
       document.getElementById("import-text").value = "";
       document.getElementById("import-preview").innerHTML = "";
-      importView.style.display = "";
-      importView.scrollIntoView({ behavior: "smooth" });
+      views.import_.style.display = "";
+      views.import_.scrollIntoView({ behavior: "smooth" });
     }
-
     document.getElementById("cancel-import").addEventListener("click", () => {
-      importView.style.display = "none";
+      views.import_.style.display = "none";
       editingDayId = null;
       pendingParsed = null;
     });
-
     document.getElementById("preview-import").addEventListener("click", () => {
       const text = document.getElementById("import-text").value;
       const parsed = parseStandings(text);
@@ -522,7 +753,6 @@
       wrap.appendChild(el("div", { class: "status info" }, `Parsed ${parsed.length} players. Review then save.`));
       wrap.appendChild(list);
     });
-
     document.getElementById("commit-import").addEventListener("click", async () => {
       if (!editingDayId || !tournament) return;
       const parsed = pendingParsed ?? parseStandings(document.getElementById("import-text").value);
@@ -536,9 +766,7 @@
       if (pErr) return flash("Player upsert failed: " + pErr.message, "err");
 
       const { data: freshPlayers, error: pErr2 } = await supabase
-        .from("players")
-        .select("*")
-        .eq("tournament_id", tournament.id);
+        .from("players").select("*").eq("tournament_id", tournament.id);
       if (pErr2) return flash(pErr2.message, "err");
       const byName = new Map(freshPlayers.map(p => [p.name, p.id]));
 
@@ -556,10 +784,10 @@
       const { error: sErr } = await supabase.from("standings").insert(inserts);
       if (sErr) return flash(sErr.message, "err");
 
-      importView.style.display = "none";
+      views.import_.style.display = "none";
       editingDayId = null;
       pendingParsed = null;
-      await loadAll();
+      await refreshTournaments();
       flash(`Saved ${inserts.length} results.`, "ok");
     });
 

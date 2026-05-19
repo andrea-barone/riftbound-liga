@@ -1,29 +1,34 @@
 # Riftbound Championship Tracker
 
-A lightweight web tracker that sits on top of Carde.io to manage one or more
-Riftbound TCG ligas. Carde.io runs the Swiss day; this app aggregates the
-final standings from each qualifier day into a season-points leaderboard
-(one per liga) and shows the cut line for each final day.
+A lightweight, multi-tenant web tracker that sits on top of Carde.io to
+manage Riftbound TCG ligas. Carde.io runs the Swiss day; this app
+aggregates the final standings from each qualifier day into a season-points
+leaderboard and shows the cut line for the final day.
 
-The admin can run multiple parallel ligas at once (e.g. a casual league and
-a competitive championship simultaneously); the public page shows a separate
-leaderboard for each.
+The app supports multiple **organizations** (e.g. game stores) on the same
+backend. Each organization has its own admin team, its own ligas, and its
+own public URL (`?org=<slug>`). Within an organization, admins can run
+multiple parallel ligas; the public page shows a separate leaderboard for
+each.
 
-- **Public leaderboard** — read-only, anyone with the URL can see it.
-- **Admin** — email login (Supabase magic link), restricted to allowlisted
-  emails, can add days, paste in Carde.io final standings, edit scoring rules
-  and cut size.
+- **Public** — read-only, `?org=<slug>` shows that organization's
+  leaderboards; the root URL shows a directory of all organizations.
+- **Admin** — magic-link login. First-time users create their own
+  organization on the next screen; existing admins are auto-routed to the
+  org they belong to. Admins of one org cannot see or edit data from
+  another org.
 - **Hosted backend** — Supabase (Postgres + auth) on the free tier.
-- **No build step** — five static files (HTML / JS / CSS / SQL / config).
+- **No build step** — static files only.
 
 ## Files
 
 | File | What it is |
 | --- | --- |
-| `schema.sql` | Database schema + RLS policies. Run this once in Supabase. |
+| `schema.sql` | Base schema (v1). Run this once in Supabase. |
+| `schema-v2-multi-org.sql` | Multi-organization migration. Run after v1. |
 | `config.js` | Your Supabase URL + anon key. **You edit this.** |
-| `index.html` | Public leaderboard. |
-| `admin.html` | Admin login + data entry. |
+| `index.html` | Public leaderboard / org directory. |
+| `admin.html` | Admin login + per-org management. |
 | `app.js` | Shared data, scoring, parsing helpers. |
 | `style.css` | Styling. |
 
@@ -39,19 +44,23 @@ leaderboard for each.
 
 1. In your Supabase dashboard, open **SQL Editor** → **New query**.
 2. Paste the contents of `schema.sql` and run it.
-3. This creates the tables, RLS policies, and a default tournament row.
+3. In a second query, paste `schema-v2-multi-org.sql` and run it. This adds
+   the organization layer on top of v1 and migrates any existing data
+   under a default org with slug `dasbrett`.
 
-### 3. Add yourself (and other staff) as an admin
+(Both scripts are safe to re-run.)
 
-In the same SQL Editor, run:
+### 3. Sign in and create your organization
 
-```sql
-INSERT INTO admins (email) VALUES
-  ('you@store.example'),
-  ('another-staff@store.example');
-```
+Skip this step if you already had data in v1 — the migration handled it.
+For a fresh install:
 
-Emails are matched case-insensitively against the address you sign in with.
+1. Open `/admin.html` (after you've completed the rest of setup below).
+2. Enter your email; click the magic link.
+3. You'll be prompted to create your organization. Pick a name and a
+   URL slug (e.g. `dasbrett`).
+4. You're now the first admin of that org. From the **Team** card you can
+   invite additional staff emails to manage the same org.
 
 ### 4. (Optional) Configure email auth
 
@@ -121,9 +130,12 @@ For each qualifier day:
 
 1. Run the day on Carde.io as usual (Swiss pairings, timer, match reports).
 2. When the day is over, copy the final standings from Carde.io.
-3. Open `/admin.html`, sign in.
-4. Click **Add a new qualifier day** with the name (e.g. "Qualifier 3") and date.
-5. On the new day, click **Import standings**.
+3. Open `/admin.html`, sign in. (If you admin multiple orgs you'll see a
+   picker; otherwise you're routed straight to your org.)
+4. From the **Ligas** card, click **Manage** on the liga you're updating.
+5. Under **Qualifier days**, click **Add a new qualifier day** with the
+   name (e.g. "Qualifier 3") and date.
+6. On the new day, click **Import standings**.
 6. Paste the standings into the textarea. Each line is one player, in
    placement order. The importer accepts a bunch of formats:
 

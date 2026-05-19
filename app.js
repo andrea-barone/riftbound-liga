@@ -6,14 +6,107 @@ import { SUPABASE_URL, SUPABASE_ANON_KEY } from "./config.js";
 export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 // ----------------------------------------------------------------------
-// Data fetching
+// Organizations
 // ----------------------------------------------------------------------
 
-export async function getTournaments() {
+export async function getOrganizations() {
   const { data, error } = await supabase
+    .from("organizations")
+    .select("*")
+    .order("created_at", { ascending: true });
+  if (error) throw error;
+  return data;
+}
+
+export async function getOrganizationBySlug(slug) {
+  const { data, error } = await supabase
+    .from("organizations")
+    .select("*")
+    .eq("slug", slug.toLowerCase())
+    .maybeSingle();
+  if (error) throw error;
+  return data;  // null if not found
+}
+
+// Returns the orgs the current authenticated user can admin.
+// Relies on the RLS read policy on `organization_admins` (admins-only) and
+// the public read policy on `organizations`.
+export async function getMyOrganizations() {
+  const { data: myEmail } = await supabase.auth.getUser();
+  if (!myEmail?.user?.email) return [];
+  const email = myEmail.user.email.toLowerCase();
+  const { data: rows, error } = await supabase
+    .from("organization_admins")
+    .select("organization_id")
+    .eq("email", email);
+  if (error) throw error;
+  const ids = rows.map(r => r.organization_id);
+  if (ids.length === 0) return [];
+  const { data: orgs, error: oErr } = await supabase
+    .from("organizations")
+    .select("*")
+    .in("id", ids)
+    .order("created_at", { ascending: true });
+  if (oErr) throw oErr;
+  return orgs;
+}
+
+export async function createOrganization(slug, name) {
+  const { data, error } = await supabase.rpc("create_organization", {
+    p_slug: slug, p_name: name,
+  });
+  if (error) throw error;
+  // Supabase returns the inserted row as an object (single result).
+  return Array.isArray(data) ? data[0] : data;
+}
+
+export async function updateOrganization(id, fields) {
+  const { error } = await supabase.from("organizations").update(fields).eq("id", id);
+  if (error) throw error;
+}
+
+export async function deleteOrganization(id) {
+  const { error } = await supabase.from("organizations").delete().eq("id", id);
+  if (error) throw error;
+}
+
+export async function getOrgAdmins(orgId) {
+  const { data, error } = await supabase
+    .from("organization_admins")
+    .select("email, created_at")
+    .eq("organization_id", orgId)
+    .order("created_at", { ascending: true });
+  if (error) throw error;
+  return data;
+}
+
+export async function addOrgAdmin(orgId, email) {
+  const { error } = await supabase
+    .from("organization_admins")
+    .insert({ organization_id: orgId, email: email.toLowerCase().trim() });
+  if (error) throw error;
+}
+
+export async function removeOrgAdmin(orgId, email) {
+  const { error } = await supabase
+    .from("organization_admins")
+    .delete()
+    .eq("organization_id", orgId)
+    .eq("email", email.toLowerCase().trim());
+  if (error) throw error;
+}
+
+// ----------------------------------------------------------------------
+// Tournaments (scoped by organization)
+// ----------------------------------------------------------------------
+
+export async function getTournaments(organizationId) {
+  let query = supabase
     .from("tournaments")
     .select("*")
     .order("created_at", { ascending: true });
+  if (organizationId) query = query.eq("organization_id", organizationId);
+  const { data, error } = await query;
   if (error) throw error;
   return data;
 }
