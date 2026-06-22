@@ -26,8 +26,9 @@ each.
 | --- | --- |
 | `schema.sql` | Base schema (v1). Run this once in Supabase. |
 | `schema-v2-multi-org.sql` | Multi-organization migration. Run after v1. |
+| `schema-v3-game-systems.sql` | Game-system tag migration. Run after v2. |
 | `config.js` | Your Supabase URL + anon key. **You edit this.** |
-| `index.html` | Public leaderboard / org directory. |
+| `index.html` | Public leaderboard / org directory / calendar. |
 | `admin.html` | Admin login + per-org management. |
 | `app.js` | Shared data, scoring, parsing helpers. |
 | `style.css` | Styling. |
@@ -47,6 +48,10 @@ each.
 3. In a second query, paste `schema-v2-multi-org.sql` and run it. This adds
    the organization layer on top of v1 and migrates any existing v1 data
    under a placeholder default org. You'll rename that org on first sign-in.
+4. In a third query, paste `schema-v3-game-systems.sql` and run it. This
+   adds the per-org "game systems" table (Riftbound / MTG / Star Wars /
+   etc.) and tags each liga with one. Existing ligas stay untagged until
+   you edit them in the admin.
 
 (Both scripts are safe to re-run.)
 

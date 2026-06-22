@@ -24,6 +24,7 @@
       <div class="subtitle" id="page-subtitle">Season points across all active ligas</div>
     </div>
 
+    <div id="tabs-host"></div>
     <div id="content">
       <section class="card"><div class="empty">Loading…</div></section>
     </div>
@@ -36,16 +37,18 @@
 
   <script type="module">
     import {
-      getOrganizations, getOrganizationBySlug, getTournaments,
+      getOrganizations, getOrganizationBySlug,
+      getGameSystems, getTournaments,
       getPlayers, getStandings, computeLeaderboard, el, fmtDate
     } from "./app.js";
 
     const params = new URLSearchParams(location.search);
     const orgSlug = (params.get("org") || "").toLowerCase();
+    const initialSys = (params.get("sys") || "").toLowerCase();
 
     async function render() {
       if (orgSlug) {
-        await renderOrgPage(orgSlug);
+        await renderOrgPage(orgSlug, initialSys || null);
       } else {
         await renderDirectory();
       }
@@ -53,10 +56,12 @@
     }
 
     // ============ Single-org leaderboards ============
-    async function renderOrgPage(slug) {
+    async function renderOrgPage(slug, activeSys) {
       const org = await getOrganizationBySlug(slug);
       const content = document.getElementById("content");
+      const tabsHost = document.getElementById("tabs-host");
       content.innerHTML = "";
+      tabsHost.innerHTML = "";
 
       if (!org) {
         document.getElementById("page-title").textContent = "Not found";
@@ -72,24 +77,69 @@
       document.getElementById("page-title").textContent = org.name;
       document.getElementById("page-subtitle").textContent = "Season points across all active ligas";
 
-      const tournaments = await getTournaments(org.id);
-      if (tournaments.length === 0) {
-        content.appendChild(el("section", { class: "card" },
-          el("div", { class: "empty" }, "No ligas posted yet. Check back soon.")));
-        return;
+      // Fetch systems + all tournaments
+      const [systems, tournaments] = await Promise.all([
+        getGameSystems(org.id),
+        getTournaments(org.id),
+      ]);
+
+      // If the requested ?sys isn't a configured system, treat as "All"
+      if (activeSys && !systems.find(s => s.key === activeSys)) activeSys = null;
+
+      // Render tabs only when there are 2+ systems
+      if (systems.length >= 2) {
+        tabsHost.appendChild(renderTabs(slug, systems, activeSys));
       }
-      const datasets = await Promise.all(tournaments.map(async t => {
+
+      // Filter tournaments
+      const filteredTournaments = activeSys
+        ? tournaments.filter(t => t.game_system_key === activeSys)
+        : tournaments;
+
+      // Load standings for the visible ligas (parallel)
+      const datasets = await Promise.all(filteredTournaments.map(async t => {
         const [players, { days, standings }] = await Promise.all([
           getPlayers(t.id), getStandings(t.id),
         ]);
         return { t, players, days, standings };
       }));
-      datasets.forEach(ds => content.appendChild(renderLeague(ds)));
+
+      // Calendar at the top of the body; uses qualifier days from the visible ligas.
+      content.appendChild(renderCalendarCard(datasets, systems));
+
+      if (filteredTournaments.length === 0) {
+        content.appendChild(el("section", { class: "card" },
+          el("div", { class: "empty" }, "No ligas in this view yet.")));
+        return;
+      }
+
+      datasets.forEach(ds => content.appendChild(renderLeague(ds, systems)));
     }
 
-    function renderLeague({ t, players, days, standings }) {
+    function renderTabs(slug, systems, activeSys) {
+      const wrap = el("div", { class: "tabs" });
+      const make = (key, label) => {
+        const isActive = activeSys === key || (!activeSys && key === null);
+        const href = key
+          ? `?org=${encodeURIComponent(slug)}&sys=${encodeURIComponent(key)}`
+          : `?org=${encodeURIComponent(slug)}`;
+        return el("a", { class: "tab" + (isActive ? " active" : ""), href }, label);
+      };
+      wrap.appendChild(make(null, "All"));
+      systems.forEach(s => wrap.appendChild(make(s.key, s.label)));
+      return wrap;
+    }
+
+    function renderLeague({ t, players, days, standings }, systems) {
       const card = el("section", { class: "card" });
-      card.appendChild(el("h2", {}, t.name));
+      const header = el("div", { class: "league-header" });
+      header.appendChild(el("h2", {}, t.name));
+      if (t.game_system_key) {
+        const sys = systems.find(s => s.key === t.game_system_key);
+        const label = sys ? sys.label : t.game_system_key;
+        header.appendChild(el("span", { class: "pill" }, label));
+      }
+      card.appendChild(header);
 
       const rows = computeLeaderboard(players, standings);
       if (rows.length === 0) {
@@ -144,6 +194,128 @@
       return card;
     }
 
+    // ============ Calendar ============
+
+    // Date helpers — work in local time. event_date comes in as "YYYY-MM-DD".
+    function parseISODate(s) {
+      const [y, m, d] = s.split("-").map(Number);
+      return new Date(y, m - 1, d);
+    }
+    function ymdKey(d) {
+      const m = String(d.getMonth() + 1).padStart(2, "0");
+      const day = String(d.getDate()).padStart(2, "0");
+      return `${d.getFullYear()}-${m}-${day}`;
+    }
+    function startOfMonth(d) { return new Date(d.getFullYear(), d.getMonth(), 1); }
+    function addMonths(d, n) { return new Date(d.getFullYear(), d.getMonth() + n, 1); }
+    function monthLabel(d) {
+      return d.toLocaleDateString(undefined, { month: "long", year: "numeric" });
+    }
+    function sameDay(a, b) {
+      return a.getFullYear() === b.getFullYear()
+          && a.getMonth() === b.getMonth()
+          && a.getDate() === b.getDate();
+    }
+
+    function collectEvents(datasets, systems) {
+      // Build a flat event list from qualifier days that have dates.
+      const events = [];
+      datasets.forEach(({ t, days }) => {
+        days.forEach(d => {
+          if (!d.event_date) return;
+          const sys = systems.find(s => s.key === t.game_system_key);
+          events.push({
+            date: parseISODate(d.event_date),
+            dayName: d.name,
+            ligaName: t.name,
+            systemLabel: sys ? sys.label : null,
+            systemKey: t.game_system_key || null,
+          });
+        });
+      });
+      return events;
+    }
+
+    function renderCalendarCard(datasets, systems) {
+      const events = collectEvents(datasets, systems);
+      const card = el("section", { class: "card calendar-card" });
+      card.appendChild(el("h2", {}, "Calendar"));
+
+      // Default view: the month that contains the next upcoming event, or
+      // today if there are none.
+      const today = new Date(); today.setHours(0, 0, 0, 0);
+      const future = events.filter(e => e.date >= today).sort((a, b) => a.date - b.date);
+      let viewDate = startOfMonth(future[0] ? future[0].date : today);
+
+      const body = el("div", { class: "calendar-body" });
+      card.appendChild(body);
+
+      function render() {
+        body.innerHTML = "";
+
+        // Header
+        const header = el("div", { class: "calendar-header" });
+        header.appendChild(el("button", {
+          class: "secondary small", "aria-label": "Previous month",
+          onclick: () => { viewDate = addMonths(viewDate, -1); render(); }
+        }, "‹"));
+        header.appendChild(el("div", { class: "calendar-month" }, monthLabel(viewDate)));
+        header.appendChild(el("button", {
+          class: "secondary small", "aria-label": "Next month",
+          onclick: () => { viewDate = addMonths(viewDate, 1); render(); }
+        }, "›"));
+        body.appendChild(header);
+
+        // Weekday labels
+        const wh = el("div", { class: "calendar-grid calendar-weekdays" });
+        ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"].forEach(w =>
+          wh.appendChild(el("div", { class: "calendar-weekday" }, w)));
+        body.appendChild(wh);
+
+        // 6×7 day grid, starting on Monday of the week containing day 1.
+        const firstWeekdayMonZero = (viewDate.getDay() + 6) % 7;
+        const start = new Date(viewDate);
+        start.setDate(viewDate.getDate() - firstWeekdayMonZero);
+
+        const byDay = new Map();
+        events.forEach(e => {
+          const k = ymdKey(e.date);
+          if (!byDay.has(k)) byDay.set(k, []);
+          byDay.get(k).push(e);
+        });
+
+        const grid = el("div", { class: "calendar-grid" });
+        for (let i = 0; i < 42; i++) {
+          const d = new Date(start);
+          d.setDate(start.getDate() + i);
+          const inMonth = d.getMonth() === viewDate.getMonth();
+          const isToday = sameDay(d, today);
+          const cell = el("div", {
+            class: "calendar-cell"
+              + (inMonth ? "" : " out")
+              + (isToday ? " today" : "")
+          });
+          cell.appendChild(el("div", { class: "calendar-date" }, String(d.getDate())));
+          (byDay.get(ymdKey(d)) || []).forEach(ev => {
+            const text = ev.systemLabel
+              ? `${ev.dayName} · ${ev.systemLabel}`
+              : ev.dayName;
+            const title = `${ev.ligaName}\n${ev.dayName}${ev.systemLabel ? " — " + ev.systemLabel : ""}`;
+            cell.appendChild(el("div", { class: "calendar-event", title }, text));
+          });
+          grid.appendChild(cell);
+        }
+        body.appendChild(grid);
+
+        if (events.length === 0) {
+          body.appendChild(el("div", { class: "muted", style: "padding:12px 4px 0; font-size:13px;" },
+            "No scheduled events yet. Days appear here once a date is set in the admin."));
+        }
+      }
+      render();
+      return card;
+    }
+
     // ============ No slug → directory of organizations ============
     async function renderDirectory() {
       document.getElementById("page-title").textContent = "Store Championships";
@@ -176,7 +348,7 @@
       console.error(err);
       document.getElementById("content").innerHTML =
         `<section class="card"><div class="status err">Couldn't load: ${err.message || err}. ` +
-        `Make sure <code>config.js</code> points at your Supabase project and both schema files have been applied.</div></section>`;
+        `Make sure <code>config.js</code> points at your Supabase project and all three schema files have been applied.</div></section>`;
     });
   </script>
 </body>

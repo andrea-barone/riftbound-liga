@@ -97,15 +97,59 @@ export async function removeOrgAdmin(orgId, email) {
 }
 
 // ----------------------------------------------------------------------
-// Tournaments (scoped by organization)
+// Game systems (per organization)
 // ----------------------------------------------------------------------
 
-export async function getTournaments(organizationId) {
+export async function getGameSystems(organizationId) {
+  let query = supabase
+    .from("game_systems")
+    .select("*")
+    .order("sort_order", { ascending: true })
+    .order("created_at", { ascending: true });
+  if (organizationId) query = query.eq("organization_id", organizationId);
+  const { data, error } = await query;
+  if (error) throw error;
+  return data;
+}
+
+export async function createGameSystem(organizationId, { key, label, sort_order }) {
+  const { data, error } = await supabase
+    .from("game_systems")
+    .insert({
+      organization_id: organizationId,
+      key: key.toLowerCase().trim(),
+      label: label.trim(),
+      sort_order: sort_order ?? 0,
+    })
+    .select().single();
+  if (error) throw error;
+  return data;
+}
+
+export async function updateGameSystem(id, fields) {
+  const payload = { ...fields };
+  if (payload.key) payload.key = payload.key.toLowerCase().trim();
+  if (payload.label) payload.label = payload.label.trim();
+  const { error } = await supabase.from("game_systems").update(payload).eq("id", id);
+  if (error) throw error;
+}
+
+export async function deleteGameSystem(id) {
+  const { error } = await supabase.from("game_systems").delete().eq("id", id);
+  if (error) throw error;
+}
+
+// ----------------------------------------------------------------------
+// Tournaments (scoped by organization, optionally by game system)
+// ----------------------------------------------------------------------
+
+export async function getTournaments(organizationId, gameSystemKey) {
   let query = supabase
     .from("tournaments")
     .select("*")
     .order("created_at", { ascending: true });
   if (organizationId) query = query.eq("organization_id", organizationId);
+  if (gameSystemKey)  query = query.eq("game_system_key", gameSystemKey);
   const { data, error } = await query;
   if (error) throw error;
   return data;

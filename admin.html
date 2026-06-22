@@ -130,6 +130,24 @@
       </p>
     </section>
 
+    <!-- Game systems -->
+    <section id="systems-view" class="card" style="display:none">
+      <h2>Game systems</h2>
+      <p class="muted" style="margin-top:0; font-size:13px;">
+        The TCGs played at this organization (Riftbound, MTG, etc.). Each liga
+        is tagged with one. The public page shows tabs to switch between systems.
+      </p>
+      <div id="systems-list"></div>
+
+      <hr class="divider" />
+      <h2 class="sub">Add a game system</h2>
+      <div class="row">
+        <div class="field" style="flex:2"><label>Display name</label><input type="text" id="new-system-label" placeholder="Riftbound" /></div>
+        <div class="field" style="flex:1"><label>Key</label><input type="text" id="new-system-key" placeholder="riftbound" /></div>
+        <button id="add-system">Add</button>
+      </div>
+    </section>
+
     <!-- Liga list -->
     <section id="liga-list-view" class="card" style="display:none">
       <h2>Ligas</h2>
@@ -139,6 +157,7 @@
       <h2 class="sub">Create a new liga</h2>
       <div class="row">
         <div class="field" style="flex:2"><label>Name</label><input type="text" id="new-liga-name" placeholder="Spring 2026 Liga" /></div>
+        <div class="field" style="flex:1"><label>Game system</label><select id="new-liga-system"></select></div>
         <div class="field" style="flex:0 0 120px"><label>Cut size</label><input type="number" id="new-liga-cut" value="8" min="1" /></div>
         <button id="add-liga">Create liga</button>
       </div>
@@ -149,6 +168,7 @@
       <h2 id="tournament-view-title">Liga settings</h2>
       <div class="row">
         <div class="field"><label>Name</label><input type="text" id="t-name" /></div>
+        <div class="field" style="flex:1"><label>Game system</label><select id="t-system"></select></div>
         <div class="field" style="flex:0 0 140px"><label>Cut size</label><input type="number" min="1" id="t-cut" /></div>
       </div>
       <div class="field">
@@ -205,6 +225,7 @@
       getOrganizations, getOrganizationBySlug, getMyOrganizations,
       createOrganization, updateOrganization, deleteOrganization,
       getOrgAdmins, addOrgAdmin, removeOrgAdmin,
+      getGameSystems, createGameSystem, updateGameSystem, deleteGameSystem,
       getTournaments, getDays, getPlayers, getStandings,
       pointsForPlacement, parseStandings, el, fmtDate
     } from "./app.js";
@@ -230,6 +251,7 @@
       orgBanner:     document.getElementById("org-banner"),
       orgSettings:   document.getElementById("org-settings-view"),
       team:          document.getElementById("team-view"),
+      systems:       document.getElementById("systems-view"),
       ligaList:      document.getElementById("liga-list-view"),
       tournament:    document.getElementById("tournament-view"),
       days:          document.getElementById("days-view"),
@@ -262,12 +284,28 @@
     // -----------------------------------------------------------------
     let myOrgs = [];
     let org = null;             // currently-selected org
+    let gameSystems = [];       // game systems for the selected org
     let tournaments = [];
     let selectedTournamentId = null;
     let tournament = null;
     let days = [], players = [], standings = [];
     let editingDayId = null;
     let pendingParsed = null;
+
+    function slugify(s) {
+      return (s || "")
+        .toLowerCase()
+        .normalize("NFKD").replace(/[̀-ͯ]/g, "")
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/^-+|-+$/g, "")
+        .slice(0, 32);
+    }
+
+    function systemLabelFor(key) {
+      if (!key) return "";
+      const sys = gameSystems.find(s => s.key === key);
+      return sys ? sys.label : key;
+    }
 
     async function bootstrap() {
       const { data: { session } } = await supabase.auth.getSession();
@@ -385,8 +423,9 @@
       document.getElementById("org-name").value = org.name;
       document.getElementById("org-slug").value = org.slug;
 
-      showOnly("orgBanner", "orgSettings", "team", "ligaList");
+      showOnly("orgBanner", "orgSettings", "team", "systems", "ligaList");
 
+      await refreshGameSystems();
       await refreshTournaments();
       await refreshTeam();
     }
@@ -457,6 +496,113 @@
     });
 
     // -----------------------------------------------------------------
+    // Game systems (within selected org)
+    // -----------------------------------------------------------------
+    async function refreshGameSystems() {
+      gameSystems = await getGameSystems(org.id);
+      renderGameSystemsList();
+      populateSystemSelects();
+    }
+
+    function renderGameSystemsList() {
+      const wrap = document.getElementById("systems-list");
+      wrap.innerHTML = "";
+      if (gameSystems.length === 0) {
+        wrap.appendChild(el("div", { class: "empty" },
+          "No game systems yet — add one below."));
+        return;
+      }
+      gameSystems.forEach(sys => {
+        const row = el("div", { class: "liga-row" });
+        row.appendChild(el("div", { class: "liga-info" }, [
+          el("strong", {}, sys.label),
+          el("span", { class: "meta" }, ` · ${sys.key}`),
+        ]));
+        const tools = el("div", { class: "toolbar" });
+        tools.appendChild(el("button", {
+          class: "secondary small",
+          onclick: () => renameGameSystem(sys),
+        }, "Rename"));
+        tools.appendChild(el("button", {
+          class: "danger small",
+          onclick: () => removeGameSystem(sys),
+        }, "Delete"));
+        row.appendChild(tools);
+        wrap.appendChild(row);
+      });
+    }
+
+    function populateSystemSelects() {
+      // For "new liga" and "edit liga" dropdowns. Shows configured systems
+      // plus a leading "— select —" placeholder when none chosen.
+      const selects = ["new-liga-system", "t-system"];
+      selects.forEach(id => {
+        const sel = document.getElementById(id);
+        if (!sel) return;
+        const prev = sel.value;
+        sel.innerHTML = "";
+        sel.appendChild(el("option", { value: "" }, "— select —"));
+        gameSystems.forEach(sys => {
+          const opt = el("option", { value: sys.key }, sys.label);
+          sel.appendChild(opt);
+        });
+        if (prev) sel.value = prev;
+      });
+    }
+
+    // Auto-suggest a key while the admin types the label
+    document.getElementById("new-system-label").addEventListener("input", (e) => {
+      const keyEl = document.getElementById("new-system-key");
+      if (!keyEl.dataset.touched) keyEl.value = slugify(e.target.value);
+    });
+    document.getElementById("new-system-key").addEventListener("input", (e) => {
+      e.target.dataset.touched = "1";
+    });
+
+    document.getElementById("add-system").addEventListener("click", async () => {
+      const label = document.getElementById("new-system-label").value.trim();
+      const key   = document.getElementById("new-system-key").value.trim().toLowerCase();
+      if (!label || !key) return flash("Label and key are required.", "err");
+      if (!/^[a-z0-9][a-z0-9-]*[a-z0-9]$/.test(key)) {
+        return flash("Key must be lowercase letters/digits/hyphens (e.g. 'star-wars').", "err");
+      }
+      try {
+        await createGameSystem(org.id, { key, label, sort_order: gameSystems.length });
+        document.getElementById("new-system-label").value = "";
+        document.getElementById("new-system-key").value = "";
+        document.getElementById("new-system-key").dataset.touched = "";
+        await refreshGameSystems();
+        flash(`Added "${label}".`, "ok");
+      } catch (e) { flash(e.message || String(e), "err"); }
+    });
+
+    async function renameGameSystem(sys) {
+      const newLabel = prompt("New display name", sys.label);
+      if (newLabel == null) return;
+      const label = newLabel.trim();
+      if (!label) return;
+      try {
+        await updateGameSystem(sys.id, { label });
+        await refreshGameSystems();
+        await refreshTournaments();
+        flash("Renamed.", "ok");
+      } catch (e) { flash(e.message || String(e), "err"); }
+    }
+
+    async function removeGameSystem(sys) {
+      const inUse = tournaments.filter(t => t.game_system_key === sys.key).length;
+      if (inUse > 0) {
+        return flash(`Can't delete: ${inUse} liga${inUse === 1 ? "" : "s"} still use this system. Reassign them first.`, "err");
+      }
+      if (!confirm(`Delete game system "${sys.label}"?`)) return;
+      try {
+        await deleteGameSystem(sys.id);
+        await refreshGameSystems();
+        flash("Deleted.", "ok");
+      } catch (e) { flash(e.message || String(e), "err"); }
+    }
+
+    // -----------------------------------------------------------------
     // Liga list (within selected org)
     // -----------------------------------------------------------------
     async function refreshTournaments() {
@@ -496,9 +642,10 @@
       tournaments.forEach(t => {
         const isSelected = t.id === selectedTournamentId;
         const row = el("div", { class: "liga-row" + (isSelected ? " selected" : "") });
+        const systemLabel = t.game_system_key ? systemLabelFor(t.game_system_key) : "(no system)";
         row.appendChild(el("div", { class: "liga-info" }, [
           el("strong", {}, t.name),
-          el("span", { class: "meta" }, ` · Cut Top ${t.cut_size}`),
+          el("span", { class: "meta" }, ` · ${systemLabel} · Cut Top ${t.cut_size}`),
         ]));
         const tools = el("div", { class: "toolbar" });
         tools.appendChild(el("button", {
@@ -534,14 +681,19 @@
     document.getElementById("add-liga").addEventListener("click", async () => {
       const name = document.getElementById("new-liga-name").value.trim();
       const cut = parseInt(document.getElementById("new-liga-cut").value, 10) || 8;
+      const sysKey = document.getElementById("new-liga-system").value || null;
       if (!name) return flash("Liga needs a name.", "err");
+      if (gameSystems.length > 0 && !sysKey) {
+        return flash("Pick a game system for this liga.", "err");
+      }
       const { data, error } = await supabase
         .from("tournaments")
-        .insert({ name, cut_size: cut, organization_id: org.id })
+        .insert({ name, cut_size: cut, organization_id: org.id, game_system_key: sysKey })
         .select().single();
       if (error) return flash(error.message, "err");
       document.getElementById("new-liga-name").value = "";
       document.getElementById("new-liga-cut").value = "8";
+      document.getElementById("new-liga-system").value = "";
       selectedTournamentId = data.id;
       await refreshTournaments();
       flash(`Created "${name}".`, "ok");
@@ -553,6 +705,8 @@
     function renderTournament() {
       document.getElementById("t-name").value = tournament.name;
       document.getElementById("t-cut").value = tournament.cut_size;
+      const tSysSel = document.getElementById("t-system");
+      tSysSel.value = tournament.game_system_key || "";
       renderTiers(tournament.scoring_tiers);
     }
 
@@ -600,6 +754,7 @@
     document.getElementById("save-tournament").addEventListener("click", async () => {
       const name = document.getElementById("t-name").value.trim();
       const cut_size = parseInt(document.getElementById("t-cut").value, 10);
+      const game_system_key = document.getElementById("t-system").value || null;
       const scoring_tiers = tournament.scoring_tiers.map(t => ({
         label: t.label || null,
         min: parseInt(t.min, 10),
@@ -609,7 +764,7 @@
       scoring_tiers.sort((a, b) => a.min - b.min);
       const { error } = await supabase
         .from("tournaments")
-        .update({ name, cut_size, scoring_tiers })
+        .update({ name, cut_size, scoring_tiers, game_system_key })
         .eq("id", tournament.id);
       if (error) return flash(error.message, "err");
       flash("Liga saved. Recalculating points on existing days…", "info");
