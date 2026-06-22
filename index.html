@@ -297,10 +297,13 @@
           });
           cell.appendChild(el("div", { class: "calendar-date" }, String(d.getDate())));
           (byDay.get(ymdKey(d)) || []).forEach(ev => {
-            const text = ev.systemLabel
-              ? `${ev.dayName} · ${ev.systemLabel}`
-              : ev.dayName;
-            const title = `${ev.ligaName}\n${ev.dayName}${ev.systemLabel ? " — " + ev.systemLabel : ""}`;
+            // Chip text: liga · day · system (system omitted if untagged).
+            // Cells ellipsis-clip; the tooltip shows everything.
+            const parts = [ev.ligaName, ev.dayName];
+            if (ev.systemLabel) parts.push(ev.systemLabel);
+            const text = parts.join(" · ");
+            const title = `${ev.ligaName} — ${ev.dayName}` +
+                          (ev.systemLabel ? ` (${ev.systemLabel})` : "");
             cell.appendChild(el("div", { class: "calendar-event", title }, text));
           });
           grid.appendChild(cell);
