@@ -30,6 +30,14 @@
     </div>
   </main>
 
+  <!-- Event details popover (centered modal with backdrop) -->
+  <div id="event-modal" class="modal-overlay" style="display:none" role="dialog" aria-modal="true" aria-labelledby="modal-title-el">
+    <div class="modal" id="modal-card">
+      <button class="modal-close" id="modal-close-btn" aria-label="Close">×</button>
+      <div id="modal-content"></div>
+    </div>
+  </div>
+
   <footer class="site">
     Updates whenever an admin posts new daily standings · Last refreshed
     <span id="refreshed-at"></span>
@@ -357,29 +365,93 @@
       if (c.kind === "championship") {
         const parts = [c.ligaName, c.dayName];
         if (c.systemLabel) parts.push(c.systemLabel);
-        const text  = parts.join(" · ");
-        const title = `${c.ligaName} — ${c.dayName}` +
-                      (c.systemLabel ? ` (${c.systemLabel})` : "");
-        return el("div", { class: "calendar-event championship", title }, text);
-      } else {
-        const parts = [];
-        if (c.startTime) parts.push(c.startTime);
-        parts.push(c.name);
-        if (c.systemLabel) parts.push(c.systemLabel);
         const text = parts.join(" · ");
-        const tooltipParts = [c.name];
-        if (c.startTime || c.endTime) {
-          tooltipParts.push((c.startTime || "") + (c.endTime ? "–" + c.endTime : ""));
-        }
-        if (c.systemLabel) tooltipParts.push(c.systemLabel);
-        if (c.description) tooltipParts.push(c.description);
-        const title = tooltipParts.join("\n");
-        const attrs = { class: "calendar-event event", title };
-        if (c.link) {
-          return el("a", { ...attrs, href: c.link, target: "_blank", rel: "noopener" }, text);
-        }
-        return el("div", attrs, text);
+        return el("button", {
+          class: "calendar-event championship",
+          type: "button",
+          onclick: () => openChipModal(c),
+        }, text);
       }
+      const parts = [];
+      if (c.startTime) parts.push(c.startTime);
+      parts.push(c.name);
+      if (c.systemLabel) parts.push(c.systemLabel);
+      const text = parts.join(" · ");
+      return el("button", {
+        class: "calendar-event event",
+        type: "button",
+        onclick: () => openChipModal(c),
+      }, text);
+    }
+
+    // ============ Event detail modal ============
+
+    const modal     = document.getElementById("event-modal");
+    const modalContent = document.getElementById("modal-content");
+    document.getElementById("modal-close-btn").addEventListener("click", closeModal);
+    modal.addEventListener("click", (e) => { if (e.target === modal) closeModal(); });
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "Escape" && modal.style.display !== "none") closeModal();
+    });
+
+    function closeModal() {
+      modal.style.display = "none";
+      modalContent.innerHTML = "";
+    }
+
+    function openChipModal(c) {
+      modalContent.innerHTML = "";
+
+      if (c.kind === "championship") {
+        // Championship-day details
+        modalContent.appendChild(el("h3", { class: "modal-title", id: "modal-title-el" }, c.ligaName));
+        const meta = el("div", { class: "modal-meta" });
+        meta.appendChild(el("strong", {}, c.dayName));
+        meta.appendChild(el("span", { class: "muted" }, " · " + longDate(c.date)));
+        modalContent.appendChild(meta);
+        if (c.systemLabel) {
+          modalContent.appendChild(el("div", { class: "modal-pills" },
+            el("span", { class: "pill" }, c.systemLabel)));
+        }
+        modalContent.appendChild(el("p", { class: "modal-note muted" },
+          "Standings will appear on the leaderboard after this day."));
+      } else {
+        // Event details
+        modalContent.appendChild(el("h3", { class: "modal-title", id: "modal-title-el" }, c.name));
+
+        const lines = [];
+        // Date line: full date for one-off, "Every Mondays" for recurring (single occurrence)
+        lines.push(longDate(c.date));
+        if (c.startTime || c.endTime) {
+          lines.push((c.startTime || "") + (c.endTime ? "–" + c.endTime : ""));
+        }
+        const meta = el("div", { class: "modal-meta" }, lines.join(" · "));
+        modalContent.appendChild(meta);
+
+        if (c.systemLabel) {
+          modalContent.appendChild(el("div", { class: "modal-pills" },
+            el("span", { class: "pill" }, c.systemLabel)));
+        }
+        if (c.description) {
+          modalContent.appendChild(el("p", { class: "modal-desc" }, c.description));
+        }
+        if (c.link) {
+          modalContent.appendChild(el("a", {
+            class: "modal-cta",
+            href: c.link,
+            target: "_blank",
+            rel: "noopener",
+          }, "Register →"));
+        }
+      }
+
+      modal.style.display = "flex";
+    }
+
+    function longDate(d) {
+      return d.toLocaleDateString(undefined, {
+        weekday: "long", month: "long", day: "numeric", year: "numeric",
+      });
     }
 
     // ============ No slug → directory of organizations ============
