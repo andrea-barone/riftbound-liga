@@ -148,6 +148,74 @@
       </div>
     </section>
 
+    <!-- Events (one-off + recurring) -->
+    <section id="events-view" class="card" style="display:none">
+      <h2>Events</h2>
+      <p class="muted" style="margin-top:0; font-size:13px;">
+        Non-championship happenings — pre-releases, casual nights, special tournaments.
+        One-off events sit on a single date; recurring events repeat weekly.
+      </p>
+      <div id="events-list"></div>
+
+      <hr class="divider" />
+      <h2 class="sub"><span id="event-form-title">Add an event</span></h2>
+
+      <div class="field">
+        <label>Type</label>
+        <div class="toolbar">
+          <label style="display:inline-flex; align-items:center; gap:6px; margin:0; font-weight:500; color:var(--text); text-transform:none; letter-spacing:0;">
+            <input type="radio" name="event-kind" value="oneoff" id="event-kind-oneoff" checked style="width:auto; height:auto;" />
+            One-off
+          </label>
+          <label style="display:inline-flex; align-items:center; gap:6px; margin:0; font-weight:500; color:var(--text); text-transform:none; letter-spacing:0;">
+            <input type="radio" name="event-kind" value="recurring" id="event-kind-recurring" style="width:auto; height:auto;" />
+            Recurring weekly
+          </label>
+        </div>
+      </div>
+
+      <div class="row">
+        <div class="field" style="flex:2"><label>Name</label><input type="text" id="event-name" placeholder="Pre-release night" /></div>
+        <div class="field" style="flex:1"><label>Game system (optional)</label><select id="event-system"></select></div>
+      </div>
+
+      <div class="row" id="event-oneoff-fields">
+        <div class="field" style="flex:1"><label>Date</label><input type="date" id="event-date" /></div>
+        <div class="field" style="flex:1"><label>Start time (optional)</label><input type="time" id="event-start" /></div>
+        <div class="field" style="flex:1"><label>End time (optional)</label><input type="time" id="event-end" /></div>
+      </div>
+
+      <div class="row" id="event-recurring-fields" style="display:none">
+        <div class="field" style="flex:1">
+          <label>Day of week</label>
+          <select id="event-dow">
+            <option value="0">Monday</option>
+            <option value="1">Tuesday</option>
+            <option value="2">Wednesday</option>
+            <option value="3">Thursday</option>
+            <option value="4">Friday</option>
+            <option value="5">Saturday</option>
+            <option value="6">Sunday</option>
+          </select>
+        </div>
+        <div class="field" style="flex:1"><label>Start time (optional)</label><input type="time" id="event-rec-start" /></div>
+        <div class="field" style="flex:1"><label>End time (optional)</label><input type="time" id="event-rec-end" /></div>
+      </div>
+
+      <div class="row" id="event-recurring-bounds" style="display:none">
+        <div class="field" style="flex:1"><label>Starts on (optional)</label><input type="date" id="event-starts-on" /></div>
+        <div class="field" style="flex:1"><label>Ends on (optional)</label><input type="date" id="event-ends-on" /></div>
+      </div>
+
+      <div class="field"><label>Link URL (optional)</label><input type="text" id="event-link" placeholder="https://..." /></div>
+      <div class="field"><label>Description (optional)</label><input type="text" id="event-description" placeholder="Drop-in, no entry fee, etc." /></div>
+
+      <div class="toolbar">
+        <button id="save-event">Save event</button>
+        <button id="cancel-edit-event" class="secondary" style="display:none">Cancel edit</button>
+      </div>
+    </section>
+
     <!-- Liga list -->
     <section id="liga-list-view" class="card" style="display:none">
       <h2>Ligas</h2>
@@ -226,6 +294,7 @@
       createOrganization, updateOrganization, deleteOrganization,
       getOrgAdmins, addOrgAdmin, removeOrgAdmin,
       getGameSystems, createGameSystem, updateGameSystem, deleteGameSystem,
+      getEvents, createEvent, updateEvent, deleteEvent,
       getTournaments, getDays, getPlayers, getStandings,
       pointsForPlacement, parseStandings, el, fmtDate
     } from "./app.js";
@@ -252,6 +321,7 @@
       orgSettings:   document.getElementById("org-settings-view"),
       team:          document.getElementById("team-view"),
       systems:       document.getElementById("systems-view"),
+      events:        document.getElementById("events-view"),
       ligaList:      document.getElementById("liga-list-view"),
       tournament:    document.getElementById("tournament-view"),
       days:          document.getElementById("days-view"),
@@ -285,6 +355,8 @@
     let myOrgs = [];
     let org = null;             // currently-selected org
     let gameSystems = [];       // game systems for the selected org
+    let events = [];            // events for the selected org
+    let editingEventId = null;
     let tournaments = [];
     let selectedTournamentId = null;
     let tournament = null;
@@ -423,9 +495,10 @@
       document.getElementById("org-name").value = org.name;
       document.getElementById("org-slug").value = org.slug;
 
-      showOnly("orgBanner", "orgSettings", "team", "systems", "ligaList");
+      showOnly("orgBanner", "orgSettings", "team", "systems", "events", "ligaList");
 
       await refreshGameSystems();
+      await refreshEvents();
       await refreshTournaments();
       await refreshTeam();
     }
@@ -502,6 +575,9 @@
       gameSystems = await getGameSystems(org.id);
       renderGameSystemsList();
       populateSystemSelects();
+      // The event form's system select is also driven by this list.
+      const eventSel = document.getElementById("event-system");
+      if (eventSel) populateEventSystemSelect();
     }
 
     function renderGameSystemsList() {
@@ -600,6 +676,178 @@
         await refreshGameSystems();
         flash("Deleted.", "ok");
       } catch (e) { flash(e.message || String(e), "err"); }
+    }
+
+    // -----------------------------------------------------------------
+    // Events (within selected org)
+    // -----------------------------------------------------------------
+
+    const DOW_NAMES = ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"];
+
+    async function refreshEvents() {
+      events = await getEvents(org.id);
+      renderEventsList();
+      populateEventSystemSelect();
+    }
+
+    function populateEventSystemSelect() {
+      const sel = document.getElementById("event-system");
+      const prev = sel.value;
+      sel.innerHTML = "";
+      sel.appendChild(el("option", { value: "" }, "— none —"));
+      gameSystems.forEach(s => sel.appendChild(el("option", { value: s.key }, s.label)));
+      if (prev) sel.value = prev;
+    }
+
+    function renderEventsList() {
+      const wrap = document.getElementById("events-list");
+      wrap.innerHTML = "";
+      if (events.length === 0) {
+        wrap.appendChild(el("div", { class: "empty" }, "No events yet — add one below."));
+        return;
+      }
+      events.forEach(e => {
+        const row = el("div", { class: "liga-row" + (editingEventId === e.id ? " selected" : "") });
+        const meta = [];
+        if (e.kind === "oneoff") {
+          meta.push(fmtDate(e.event_date));
+        } else {
+          meta.push(DOW_NAMES[e.day_of_week] + "s");
+        }
+        if (e.start_time) meta.push(e.start_time.slice(0, 5));
+        if (e.game_system_key) meta.push(systemLabelFor(e.game_system_key));
+        if (!e.active) meta.push("(hidden)");
+
+        row.appendChild(el("div", { class: "liga-info" }, [
+          el("strong", {}, e.name),
+          el("span", { class: "meta" }, " · " + meta.join(" · ")),
+        ]));
+
+        const tools = el("div", { class: "toolbar" });
+        tools.appendChild(el("button", {
+          class: "secondary small",
+          onclick: () => loadEventForEdit(e.id),
+        }, "Edit"));
+        tools.appendChild(el("button", {
+          class: "danger small",
+          onclick: () => removeEvent(e),
+        }, "Delete"));
+        row.appendChild(tools);
+        wrap.appendChild(row);
+      });
+    }
+
+    function setEventKind(kind) {
+      document.getElementById("event-kind-oneoff").checked = kind === "oneoff";
+      document.getElementById("event-kind-recurring").checked = kind === "recurring";
+      document.getElementById("event-oneoff-fields").style.display = kind === "oneoff" ? "" : "none";
+      document.getElementById("event-recurring-fields").style.display = kind === "recurring" ? "" : "none";
+      document.getElementById("event-recurring-bounds").style.display = kind === "recurring" ? "" : "none";
+    }
+    document.getElementById("event-kind-oneoff").addEventListener("change", () => setEventKind("oneoff"));
+    document.getElementById("event-kind-recurring").addEventListener("change", () => setEventKind("recurring"));
+
+    function readEventForm() {
+      const kind = document.querySelector('input[name="event-kind"]:checked').value;
+      const fields = {
+        kind,
+        name: document.getElementById("event-name").value.trim(),
+        game_system_key: document.getElementById("event-system").value || null,
+        link_url: document.getElementById("event-link").value.trim() || null,
+        description: document.getElementById("event-description").value.trim() || null,
+      };
+      if (kind === "oneoff") {
+        fields.event_date = document.getElementById("event-date").value || null;
+        fields.day_of_week = null;
+        fields.starts_on = null;
+        fields.ends_on = null;
+        fields.start_time = document.getElementById("event-start").value || null;
+        fields.end_time = document.getElementById("event-end").value || null;
+      } else {
+        fields.event_date = null;
+        fields.day_of_week = parseInt(document.getElementById("event-dow").value, 10);
+        fields.starts_on = document.getElementById("event-starts-on").value || null;
+        fields.ends_on = document.getElementById("event-ends-on").value || null;
+        fields.start_time = document.getElementById("event-rec-start").value || null;
+        fields.end_time = document.getElementById("event-rec-end").value || null;
+      }
+      return fields;
+    }
+
+    function clearEventForm() {
+      editingEventId = null;
+      ["event-name","event-link","event-description","event-date","event-start","event-end","event-rec-start","event-rec-end","event-starts-on","event-ends-on"]
+        .forEach(id => { const n = document.getElementById(id); if (n) n.value = ""; });
+      document.getElementById("event-system").value = "";
+      document.getElementById("event-dow").value = "0";
+      setEventKind("oneoff");
+      document.getElementById("event-form-title").textContent = "Add an event";
+      document.getElementById("save-event").textContent = "Save event";
+      document.getElementById("cancel-edit-event").style.display = "none";
+    }
+
+    function loadEventForEdit(id) {
+      const e = events.find(x => x.id === id);
+      if (!e) return;
+      editingEventId = id;
+      document.getElementById("event-form-title").textContent = `Editing: ${e.name}`;
+      document.getElementById("save-event").textContent = "Update event";
+      document.getElementById("cancel-edit-event").style.display = "";
+
+      document.getElementById("event-name").value = e.name || "";
+      document.getElementById("event-system").value = e.game_system_key || "";
+      document.getElementById("event-link").value = e.link_url || "";
+      document.getElementById("event-description").value = e.description || "";
+
+      setEventKind(e.kind);
+      if (e.kind === "oneoff") {
+        document.getElementById("event-date").value = e.event_date || "";
+        document.getElementById("event-start").value = (e.start_time || "").slice(0,5);
+        document.getElementById("event-end").value = (e.end_time || "").slice(0,5);
+      } else {
+        document.getElementById("event-dow").value = String(e.day_of_week);
+        document.getElementById("event-rec-start").value = (e.start_time || "").slice(0,5);
+        document.getElementById("event-rec-end").value = (e.end_time || "").slice(0,5);
+        document.getElementById("event-starts-on").value = e.starts_on || "";
+        document.getElementById("event-ends-on").value = e.ends_on || "";
+      }
+      renderEventsList();
+      document.getElementById("events-view").scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+
+    document.getElementById("cancel-edit-event").addEventListener("click", () => {
+      clearEventForm();
+      renderEventsList();
+    });
+
+    document.getElementById("save-event").addEventListener("click", async () => {
+      const f = readEventForm();
+      if (!f.name) return flash("Event needs a name.", "err");
+      if (f.kind === "oneoff" && !f.event_date) return flash("Pick a date for the one-off event.", "err");
+      if (f.kind === "recurring" && (f.day_of_week == null || isNaN(f.day_of_week)))
+        return flash("Pick a day of week.", "err");
+
+      try {
+        if (editingEventId) {
+          await updateEvent(editingEventId, f);
+          flash("Event updated.", "ok");
+        } else {
+          await createEvent(org.id, { ...f, sort_order: events.length });
+          flash("Event added.", "ok");
+        }
+        clearEventForm();
+        await refreshEvents();
+      } catch (e) { flash(e.message || String(e), "err"); }
+    });
+
+    async function removeEvent(e) {
+      if (!confirm(`Delete event "${e.name}"?`)) return;
+      try {
+        await deleteEvent(e.id);
+        if (editingEventId === e.id) clearEventForm();
+        await refreshEvents();
+        flash("Event deleted.", "ok");
+      } catch (err) { flash(err.message || String(err), "err"); }
     }
 
     // -----------------------------------------------------------------

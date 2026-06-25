@@ -27,6 +27,7 @@ each.
 | `schema.sql` | Base schema (v1). Run this once in Supabase. |
 | `schema-v2-multi-org.sql` | Multi-organization migration. Run after v1. |
 | `schema-v3-game-systems.sql` | Game-system tag migration. Run after v2. |
+| `schema-v4-events.sql` | Events table (one-off + recurring). Run after v3. |
 | `config.js` | Your Supabase URL + anon key. **You edit this.** |
 | `index.html` | Public leaderboard / org directory / calendar. |
 | `admin.html` | Admin login + per-org management. |
@@ -52,6 +53,10 @@ each.
    adds the per-org "game systems" table (Riftbound / MTG / Star Wars /
    etc.) and tags each liga with one. Existing ligas stay untagged until
    you edit them in the admin.
+5. In a fourth query, paste `schema-v4-events.sql` and run it. This adds
+   the events table (one-off and recurring weekly events) so the calendar
+   can show pre-releases, casual nights, and recurring play sessions
+   alongside championship qualifier days.
 
 (Both scripts are safe to re-run.)
 

@@ -140,6 +140,99 @@ export async function deleteGameSystem(id) {
 }
 
 // ----------------------------------------------------------------------
+// Events (one-off + recurring weekly)
+// ----------------------------------------------------------------------
+
+export async function getEvents(organizationId) {
+  let query = supabase
+    .from("events")
+    .select("*")
+    .order("kind", { ascending: true })           // oneoff before recurring
+    .order("event_date", { ascending: true, nullsFirst: false })
+    .order("day_of_week", { ascending: true, nullsFirst: false })
+    .order("start_time", { ascending: true, nullsFirst: true });
+  if (organizationId) query = query.eq("organization_id", organizationId);
+  const { data, error } = await query;
+  if (error) throw error;
+  return data;
+}
+
+export async function createEvent(organizationId, fields) {
+  const { data, error } = await supabase
+    .from("events")
+    .insert({ organization_id: organizationId, ...fields })
+    .select().single();
+  if (error) throw error;
+  return data;
+}
+
+export async function updateEvent(id, fields) {
+  const { error } = await supabase.from("events").update(fields).eq("id", id);
+  if (error) throw error;
+}
+
+export async function deleteEvent(id) {
+  const { error } = await supabase.from("events").delete().eq("id", id);
+  if (error) throw error;
+}
+
+// Expand events (one-off + recurring) into per-date occurrences within
+// the inclusive range [fromDate, toDate]. Both are JS Date objects in local time.
+// Returns: [{ date: Date, event: <row> }]
+//
+// A recurring event creates one occurrence per ISO week within the range
+// on its day_of_week, optionally bounded by starts_on / ends_on.
+export function expandEventsToOccurrences(events, fromDate, toDate) {
+  const out = [];
+  const fromTs = startOfDay(fromDate).getTime();
+  const toTs   = startOfDay(toDate).getTime();
+
+  for (const e of events) {
+    if (!e.active) continue;
+
+    if (e.kind === "oneoff") {
+      if (!e.event_date) continue;
+      const d = parseISODate(e.event_date);
+      const t = d.getTime();
+      if (t >= fromTs && t <= toTs) out.push({ date: d, event: e });
+      continue;
+    }
+
+    if (e.kind === "recurring") {
+      // 0=Mon..6=Sun. Walk from fromDate forward to the first matching weekday,
+      // then step by 7 days until we pass toDate.
+      const targetMonZero = e.day_of_week;
+      const startsOn = e.starts_on ? parseISODate(e.starts_on) : null;
+      const endsOn   = e.ends_on   ? parseISODate(e.ends_on)   : null;
+
+      // Find first occurrence on/after fromDate matching targetMonZero
+      const cursor = new Date(fromDate);
+      cursor.setHours(0, 0, 0, 0);
+      const cursorMonZero = (cursor.getDay() + 6) % 7;
+      const offset = (targetMonZero - cursorMonZero + 7) % 7;
+      cursor.setDate(cursor.getDate() + offset);
+
+      while (cursor.getTime() <= toTs) {
+        const inBounds =
+          (!startsOn || cursor.getTime() >= startsOn.getTime()) &&
+          (!endsOn   || cursor.getTime() <= endsOn.getTime());
+        if (inBounds) out.push({ date: new Date(cursor), event: e });
+        cursor.setDate(cursor.getDate() + 7);
+      }
+    }
+  }
+  return out;
+}
+
+function parseISODate(s) {
+  const [y, m, d] = s.split("-").map(Number);
+  return new Date(y, m - 1, d);
+}
+function startOfDay(d) {
+  const x = new Date(d); x.setHours(0, 0, 0, 0); return x;
+}
+
+// ----------------------------------------------------------------------
 // Tournaments (scoped by organization, optionally by game system)
 // ----------------------------------------------------------------------
 

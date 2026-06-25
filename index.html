@@ -38,7 +38,7 @@
   <script type="module">
     import {
       getOrganizations, getOrganizationBySlug,
-      getGameSystems, getTournaments,
+      getGameSystems, getTournaments, getEvents, expandEventsToOccurrences,
       getPlayers, getStandings, computeLeaderboard, el, fmtDate
     } from "./app.js";
 
@@ -77,10 +77,11 @@
       document.getElementById("page-title").textContent = org.name;
       document.getElementById("page-subtitle").textContent = "Season points across all active ligas";
 
-      // Fetch systems + all tournaments
-      const [systems, tournaments] = await Promise.all([
+      // Fetch systems, all tournaments, and all events in parallel
+      const [systems, tournaments, allEvents] = await Promise.all([
         getGameSystems(org.id),
         getTournaments(org.id),
+        getEvents(org.id),
       ]);
 
       // If the requested ?sys isn't a configured system, treat as "All"
@@ -91,10 +92,16 @@
         tabsHost.appendChild(renderTabs(slug, systems, activeSys));
       }
 
-      // Filter tournaments
+      // Filter tournaments by tab
       const filteredTournaments = activeSys
         ? tournaments.filter(t => t.game_system_key === activeSys)
         : tournaments;
+
+      // Filter events by tab. An event with no system is system-agnostic — it
+      // shows in every tab.
+      const filteredEvents = activeSys
+        ? allEvents.filter(e => !e.game_system_key || e.game_system_key === activeSys)
+        : allEvents;
 
       // Load standings for the visible ligas (parallel)
       const datasets = await Promise.all(filteredTournaments.map(async t => {
@@ -104,12 +111,12 @@
         return { t, players, days, standings };
       }));
 
-      // Calendar at the top of the body; uses qualifier days from the visible ligas.
-      content.appendChild(renderCalendarCard(datasets, systems));
+      // Calendar at the top of the body.
+      content.appendChild(renderCalendarCard(datasets, systems, filteredEvents));
 
-      if (filteredTournaments.length === 0) {
+      if (filteredTournaments.length === 0 && filteredEvents.length === 0) {
         content.appendChild(el("section", { class: "card" },
-          el("div", { class: "empty" }, "No ligas in this view yet.")));
+          el("div", { class: "empty" }, "Nothing in this view yet.")));
         return;
       }
 
@@ -217,35 +224,41 @@
           && a.getDate() === b.getDate();
     }
 
-    function collectEvents(datasets, systems) {
-      // Build a flat event list from qualifier days that have dates.
-      const events = [];
+    function collectChampionshipDays(datasets, systems) {
+      // Build a flat list of championship-day entries from qualifier days
+      // that have dates set.
+      const out = [];
       datasets.forEach(({ t, days }) => {
         days.forEach(d => {
           if (!d.event_date) return;
           const sys = systems.find(s => s.key === t.game_system_key);
-          events.push({
+          out.push({
+            kind: "championship",
             date: parseISODate(d.event_date),
             dayName: d.name,
             ligaName: t.name,
             systemLabel: sys ? sys.label : null,
-            systemKey: t.game_system_key || null,
           });
         });
       });
-      return events;
+      return out;
     }
 
-    function renderCalendarCard(datasets, systems) {
-      const events = collectEvents(datasets, systems);
+    function renderCalendarCard(datasets, systems, rawEvents) {
+      const championshipChips = collectChampionshipDays(datasets, systems);
       const card = el("section", { class: "card calendar-card" });
       card.appendChild(el("h2", {}, "Calendar"));
 
-      // Default view: the month that contains the next upcoming event, or
-      // today if there are none.
+      // Default view: the month containing the next upcoming championship
+      // day (or one-off event), falling back to today.
       const today = new Date(); today.setHours(0, 0, 0, 0);
-      const future = events.filter(e => e.date >= today).sort((a, b) => a.date - b.date);
-      let viewDate = startOfMonth(future[0] ? future[0].date : today);
+      const upcomingDates = [
+        ...championshipChips.filter(c => c.date >= today).map(c => c.date),
+        ...rawEvents.filter(e => e.kind === "oneoff" && e.event_date)
+                    .map(e => parseISODate(e.event_date))
+                    .filter(d => d >= today),
+      ].sort((a, b) => a - b);
+      let viewDate = startOfMonth(upcomingDates[0] || today);
 
       const body = el("div", { class: "calendar-body" });
       card.appendChild(body);
@@ -272,22 +285,50 @@
           wh.appendChild(el("div", { class: "calendar-weekday" }, w)));
         body.appendChild(wh);
 
-        // 6×7 day grid, starting on Monday of the week containing day 1.
+        // 6×7 grid bounds — Monday of week containing day 1 through Sunday of week +5.
         const firstWeekdayMonZero = (viewDate.getDay() + 6) % 7;
-        const start = new Date(viewDate);
-        start.setDate(viewDate.getDate() - firstWeekdayMonZero);
+        const gridStart = new Date(viewDate);
+        gridStart.setDate(viewDate.getDate() - firstWeekdayMonZero);
+        const gridEnd = new Date(gridStart);
+        gridEnd.setDate(gridStart.getDate() + 41);
 
-        const byDay = new Map();
-        events.forEach(e => {
-          const k = ymdKey(e.date);
-          if (!byDay.has(k)) byDay.set(k, []);
-          byDay.get(k).push(e);
+        // Expand events (one-off + recurring) into per-date occurrences
+        // within the visible grid range. Then build event chips.
+        const occurrences = expandEventsToOccurrences(rawEvents, gridStart, gridEnd);
+        const eventChips = occurrences.map(({ date, event }) => {
+          const sys = systems.find(s => s.key === event.game_system_key);
+          return {
+            kind: "event",
+            date,
+            name: event.name,
+            startTime: event.start_time ? event.start_time.slice(0, 5) : null,
+            endTime:   event.end_time   ? event.end_time.slice(0, 5)   : null,
+            systemLabel: sys ? sys.label : null,
+            description: event.description,
+            link: event.link_url,
+          };
         });
+
+        // Bucket all chips (championship + events) by yyyy-mm-dd
+        const byDay = new Map();
+        const addChip = (c) => {
+          const k = ymdKey(c.date);
+          if (!byDay.has(k)) byDay.set(k, []);
+          byDay.get(k).push(c);
+        };
+        championshipChips.forEach(addChip);
+        eventChips.forEach(addChip);
+
+        // Inside a day, championships come first, then events, then by name.
+        byDay.forEach(arr => arr.sort((a, b) => {
+          if (a.kind !== b.kind) return a.kind === "championship" ? -1 : 1;
+          return (a.dayName || a.name).localeCompare(b.dayName || b.name);
+        }));
 
         const grid = el("div", { class: "calendar-grid" });
         for (let i = 0; i < 42; i++) {
-          const d = new Date(start);
-          d.setDate(start.getDate() + i);
+          const d = new Date(gridStart);
+          d.setDate(gridStart.getDate() + i);
           const inMonth = d.getMonth() === viewDate.getMonth();
           const isToday = sameDay(d, today);
           const cell = el("div", {
@@ -296,27 +337,49 @@
               + (isToday ? " today" : "")
           });
           cell.appendChild(el("div", { class: "calendar-date" }, String(d.getDate())));
-          (byDay.get(ymdKey(d)) || []).forEach(ev => {
-            // Chip text: liga · day · system (system omitted if untagged).
-            // Cells ellipsis-clip; the tooltip shows everything.
-            const parts = [ev.ligaName, ev.dayName];
-            if (ev.systemLabel) parts.push(ev.systemLabel);
-            const text = parts.join(" · ");
-            const title = `${ev.ligaName} — ${ev.dayName}` +
-                          (ev.systemLabel ? ` (${ev.systemLabel})` : "");
-            cell.appendChild(el("div", { class: "calendar-event", title }, text));
+          (byDay.get(ymdKey(d)) || []).forEach(c => {
+            cell.appendChild(buildChip(c));
           });
           grid.appendChild(cell);
         }
         body.appendChild(grid);
 
-        if (events.length === 0) {
+        if (byDay.size === 0) {
           body.appendChild(el("div", { class: "muted", style: "padding:12px 4px 0; font-size:13px;" },
-            "No scheduled events yet. Days appear here once a date is set in the admin."));
+            "Nothing scheduled this month."));
         }
       }
       render();
       return card;
+    }
+
+    function buildChip(c) {
+      if (c.kind === "championship") {
+        const parts = [c.ligaName, c.dayName];
+        if (c.systemLabel) parts.push(c.systemLabel);
+        const text  = parts.join(" · ");
+        const title = `${c.ligaName} — ${c.dayName}` +
+                      (c.systemLabel ? ` (${c.systemLabel})` : "");
+        return el("div", { class: "calendar-event championship", title }, text);
+      } else {
+        const parts = [];
+        if (c.startTime) parts.push(c.startTime);
+        parts.push(c.name);
+        if (c.systemLabel) parts.push(c.systemLabel);
+        const text = parts.join(" · ");
+        const tooltipParts = [c.name];
+        if (c.startTime || c.endTime) {
+          tooltipParts.push((c.startTime || "") + (c.endTime ? "–" + c.endTime : ""));
+        }
+        if (c.systemLabel) tooltipParts.push(c.systemLabel);
+        if (c.description) tooltipParts.push(c.description);
+        const title = tooltipParts.join("\n");
+        const attrs = { class: "calendar-event event", title };
+        if (c.link) {
+          return el("a", { ...attrs, href: c.link, target: "_blank", rel: "noopener" }, text);
+        }
+        return el("div", attrs, text);
+      }
     }
 
     // ============ No slug → directory of organizations ============
