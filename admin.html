@@ -240,6 +240,10 @@
         <div class="field" style="flex:0 0 140px"><label>Cut size</label><input type="number" min="1" id="t-cut" /></div>
       </div>
       <div class="field">
+        <label>Description (optional)</label>
+        <input type="text" id="t-description" placeholder="What this championship is about — shown in each day's popover on the calendar." />
+      </div>
+      <div class="field">
         <label>Scoring tiers</label>
         <div id="tier-editor"></div>
         <div class="toolbar" style="margin-top:10px"><button id="add-tier" class="secondary small">+ Add tier</button></div>
@@ -256,11 +260,23 @@
       <div id="days-list"></div>
 
       <hr class="divider" />
-      <h2 class="sub">Add a new qualifier day</h2>
+      <h2 class="sub"><span id="day-form-title">Add a new qualifier day</span></h2>
       <div class="row">
         <div class="field" style="flex:2"><label>Day name</label><input type="text" id="new-day-name" placeholder="Qualifier 1" /></div>
         <div class="field" style="flex:1"><label>Date (optional)</label><input type="date" id="new-day-date" /></div>
+      </div>
+      <div class="row">
+        <div class="field" style="flex:1"><label>Start time (optional)</label><input type="time" id="new-day-start" /></div>
+        <div class="field" style="flex:1"><label>End time (optional)</label><input type="time" id="new-day-end" /></div>
+        <div class="field" style="flex:2"><label>Registration URL (optional)</label><input type="text" id="new-day-link" placeholder="https://..." /></div>
+      </div>
+      <div class="field">
+        <label>Description (optional)</label>
+        <input type="text" id="new-day-description" placeholder="What's special about this day — format notes, prizes, etc." />
+      </div>
+      <div class="toolbar">
         <button id="add-day">Add day</button>
+        <button id="cancel-edit-day" class="secondary" style="display:none">Cancel edit</button>
       </div>
     </section>
 
@@ -361,7 +377,8 @@
     let selectedTournamentId = null;
     let tournament = null;
     let days = [], players = [], standings = [];
-    let editingDayId = null;
+    let editingDayId = null;       // import-flow target day
+    let editingDayMetaId = null;   // day whose metadata is being edited
     let pendingParsed = null;
 
     function slugify(s) {
@@ -953,6 +970,7 @@
     function renderTournament() {
       document.getElementById("t-name").value = tournament.name;
       document.getElementById("t-cut").value = tournament.cut_size;
+      document.getElementById("t-description").value = tournament.description || "";
       const tSysSel = document.getElementById("t-system");
       tSysSel.value = tournament.game_system_key || "";
       renderTiers(tournament.scoring_tiers);
@@ -1003,6 +1021,7 @@
       const name = document.getElementById("t-name").value.trim();
       const cut_size = parseInt(document.getElementById("t-cut").value, 10);
       const game_system_key = document.getElementById("t-system").value || null;
+      const description = document.getElementById("t-description").value.trim() || null;
       const scoring_tiers = tournament.scoring_tiers.map(t => ({
         label: t.label || null,
         min: parseInt(t.min, 10),
@@ -1012,7 +1031,7 @@
       scoring_tiers.sort((a, b) => a.min - b.min);
       const { error } = await supabase
         .from("tournaments")
-        .update({ name, cut_size, scoring_tiers, game_system_key })
+        .update({ name, cut_size, scoring_tiers, game_system_key, description })
         .eq("id", tournament.id);
       if (error) return flash(error.message, "err");
       flash("Liga saved. Recalculating points on existing days…", "info");
@@ -1049,18 +1068,25 @@
         const dayStandings = standings
           .filter(s => s.day_id === d.id)
           .sort((a, b) => a.placement - b.placement);
-        const block = el("div", { class: "day-block" });
+        const block = el("div", {
+          class: "day-block" + (editingDayMetaId === d.id ? " selected" : "")
+        });
         const head = el("header");
+        const metaParts = [];
+        if (d.event_date) metaParts.push(fmtDate(d.event_date));
+        if (d.start_time) metaParts.push(d.start_time.slice(0, 5));
+        metaParts.push(`${dayStandings.length} player${dayStandings.length === 1 ? "" : "s"}`);
         head.appendChild(el("div", {}, [
           el("strong", {}, d.name),
-          el("span", { class: "meta" }, d.event_date ? ` · ${fmtDate(d.event_date)}` : ""),
-          el("span", { class: "meta" }, ` · ${dayStandings.length} player${dayStandings.length === 1 ? "" : "s"}`),
+          el("span", { class: "meta" }, " · " + metaParts.join(" · ")),
         ]));
         const tools = el("div", { class: "toolbar" });
-        tools.appendChild(el("button", { class: "secondary",
-          onclick: () => openImport(d.id) }, dayStandings.length ? "Re-import" : "Import standings"));
-        tools.appendChild(el("button", { class: "danger",
-          onclick: () => deleteDay(d.id) }, "Delete day"));
+        tools.appendChild(el("button", { class: "secondary small",
+          onclick: () => loadDayForEdit(d.id) }, "Edit"));
+        tools.appendChild(el("button", { class: "secondary small",
+          onclick: () => openImport(d.id) }, dayStandings.length ? "Re-import" : "Import"));
+        tools.appendChild(el("button", { class: "danger small",
+          onclick: () => deleteDay(d.id) }, "Delete"));
         head.appendChild(tools);
         block.appendChild(head);
 
@@ -1082,20 +1108,69 @@
       });
     }
 
+    function readDayForm() {
+      return {
+        name:        document.getElementById("new-day-name").value.trim(),
+        event_date:  document.getElementById("new-day-date").value || null,
+        start_time:  document.getElementById("new-day-start").value || null,
+        end_time:    document.getElementById("new-day-end").value || null,
+        link_url:    document.getElementById("new-day-link").value.trim() || null,
+        description: document.getElementById("new-day-description").value.trim() || null,
+      };
+    }
+    function clearDayForm() {
+      editingDayMetaId = null;
+      ["new-day-name","new-day-date","new-day-start","new-day-end","new-day-link","new-day-description"]
+        .forEach(id => { document.getElementById(id).value = ""; });
+      document.getElementById("day-form-title").textContent = "Add a new qualifier day";
+      document.getElementById("add-day").textContent = "Add day";
+      document.getElementById("cancel-edit-day").style.display = "none";
+    }
+    function loadDayForEdit(id) {
+      const d = days.find(x => x.id === id);
+      if (!d) return;
+      editingDayMetaId = id;
+      document.getElementById("new-day-name").value        = d.name || "";
+      document.getElementById("new-day-date").value        = d.event_date || "";
+      document.getElementById("new-day-start").value       = (d.start_time || "").slice(0, 5);
+      document.getElementById("new-day-end").value         = (d.end_time   || "").slice(0, 5);
+      document.getElementById("new-day-link").value        = d.link_url || "";
+      document.getElementById("new-day-description").value = d.description || "";
+      document.getElementById("day-form-title").textContent = `Editing: ${d.name}`;
+      document.getElementById("add-day").textContent = "Update day";
+      document.getElementById("cancel-edit-day").style.display = "";
+      renderDays();
+      document.getElementById("days-view").scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+
+    document.getElementById("cancel-edit-day").addEventListener("click", () => {
+      clearDayForm();
+      renderDays();
+    });
+
     document.getElementById("add-day").addEventListener("click", async () => {
       if (!tournament) return flash("Select a liga first.", "err");
-      const name = document.getElementById("new-day-name").value.trim();
-      const date = document.getElementById("new-day-date").value || null;
-      if (!name) return flash("Day needs a name.", "err");
+      const f = readDayForm();
+      if (!f.name) return flash("Day needs a name.", "err");
+
+      if (editingDayMetaId) {
+        const { error } = await supabase
+          .from("qualifier_days").update(f).eq("id", editingDayMetaId);
+        if (error) return flash(error.message, "err");
+        clearDayForm();
+        await refreshTournaments();
+        flash(`Updated ${f.name}.`, "ok");
+        return;
+      }
+
       const sort_order = days.length;
       const { error } = await supabase.from("qualifier_days").insert({
-        tournament_id: tournament.id, name, event_date: date, sort_order,
+        tournament_id: tournament.id, sort_order, ...f,
       });
       if (error) return flash(error.message, "err");
-      document.getElementById("new-day-name").value = "";
-      document.getElementById("new-day-date").value = "";
+      clearDayForm();
       await refreshTournaments();
-      flash(`Added ${name}.`, "ok");
+      flash(`Added ${f.name}.`, "ok");
     });
 
     async function deleteDay(dayId) {

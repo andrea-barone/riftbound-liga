@@ -517,9 +517,15 @@ button.small {
 .modal-desc {
   font-size: 14px;
   color: var(--text);
-  margin: 0 0 18px 0;
+  margin: 0 0 14px 0;
   line-height: 1.5;
 }
+.modal-desc + .modal-desc-secondary {
+  margin-top: -6px;
+  color: var(--muted);
+  font-size: 13px;
+}
+.modal-desc-secondary { color: var(--muted); font-size: 13px; }
 .modal-note {
   font-size: 13px;
   margin: 12px 0 0 0;
@@ -532,12 +538,28 @@ button.small {
   padding: 0 18px;
   background: var(--accent);
   color: var(--on-accent) !important;
+  border: 1px solid var(--accent);
   border-radius: var(--radius-sm);
+  font-family: inherit;
   font-size: 14px;
   font-weight: 600;
   text-decoration: none;
+  cursor: pointer;
+  margin-top: 4px;
 }
-.modal-cta:hover { background: var(--accent-hover); text-decoration: none; }
+.modal-cta:hover { background: var(--accent-hover); border-color: var(--accent-hover); text-decoration: none; }
+.modal-cta:disabled,
+.modal-cta[disabled] {
+  background: var(--panel-2);
+  border-color: var(--border);
+  color: var(--muted) !important;
+  cursor: not-allowed;
+}
+.modal-cta:disabled:hover,
+.modal-cta[disabled]:hover {
+  background: var(--panel-2);
+  border-color: var(--border);
+}
 
 /* ---------- Status banners ---------- */
 

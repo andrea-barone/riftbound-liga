@@ -28,6 +28,7 @@ each.
 | `schema-v2-multi-org.sql` | Multi-organization migration. Run after v1. |
 | `schema-v3-game-systems.sql` | Game-system tag migration. Run after v2. |
 | `schema-v4-events.sql` | Events table (one-off + recurring). Run after v3. |
+| `schema-v5-day-fields.sql` | Per-day description/link/time + liga description. Run after v4. |
 | `config.js` | Your Supabase URL + anon key. **You edit this.** |
 | `index.html` | Public leaderboard / org directory / calendar. |
 | `admin.html` | Admin login + per-org management. |
@@ -57,6 +58,10 @@ each.
    the events table (one-off and recurring weekly events) so the calendar
    can show pre-releases, casual nights, and recurring play sessions
    alongside championship qualifier days.
+6. In a fifth query, paste `schema-v5-day-fields.sql` and run it. This
+   adds per-day fields (description, registration URL, start/end time)
+   to qualifier days and a description column to tournaments, so each
+   championship day can carry its own info and registration link.
 
 (Both scripts are safe to re-run.)
 

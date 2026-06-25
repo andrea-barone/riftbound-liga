@@ -245,6 +245,11 @@
             date: parseISODate(d.event_date),
             dayName: d.name,
             ligaName: t.name,
+            ligaDescription: t.description || null,
+            description: d.description || null,
+            link: d.link_url || null,
+            startTime: d.start_time ? d.start_time.slice(0, 5) : null,
+            endTime:   d.end_time   ? d.end_time.slice(0, 5)   : null,
             systemLabel: sys ? sys.label : null,
           });
         });
@@ -363,25 +368,25 @@
 
     function buildChip(c) {
       if (c.kind === "championship") {
-        const parts = [c.ligaName, c.dayName];
+        const parts = [];
+        if (c.startTime) parts.push(c.startTime);
+        parts.push(c.ligaName, c.dayName);
         if (c.systemLabel) parts.push(c.systemLabel);
-        const text = parts.join(" · ");
         return el("button", {
           class: "calendar-event championship",
           type: "button",
           onclick: () => openChipModal(c),
-        }, text);
+        }, parts.join(" · "));
       }
       const parts = [];
       if (c.startTime) parts.push(c.startTime);
       parts.push(c.name);
       if (c.systemLabel) parts.push(c.systemLabel);
-      const text = parts.join(" · ");
       return el("button", {
         class: "calendar-event event",
         type: "button",
         onclick: () => openChipModal(c),
-      }, text);
+      }, parts.join(" · "));
     }
 
     // ============ Event detail modal ============
@@ -403,30 +408,55 @@
       modalContent.innerHTML = "";
 
       if (c.kind === "championship") {
-        // Championship-day details
-        modalContent.appendChild(el("h3", { class: "modal-title", id: "modal-title-el" }, c.ligaName));
-        const meta = el("div", { class: "modal-meta" });
-        meta.appendChild(el("strong", {}, c.dayName));
-        meta.appendChild(el("span", { class: "muted" }, " · " + longDate(c.date)));
-        modalContent.appendChild(meta);
+        // Title: Liga + day
+        modalContent.appendChild(el("h3", { class: "modal-title", id: "modal-title-el" },
+          `${c.ligaName} · ${c.dayName}`));
+
+        // Meta: date and (optional) time range
+        const metaParts = [longDate(c.date)];
+        if (c.startTime || c.endTime) {
+          metaParts.push((c.startTime || "") + (c.endTime ? "–" + c.endTime : ""));
+        }
+        modalContent.appendChild(el("div", { class: "modal-meta" }, metaParts.join(" · ")));
+
         if (c.systemLabel) {
           modalContent.appendChild(el("div", { class: "modal-pills" },
             el("span", { class: "pill" }, c.systemLabel)));
         }
-        modalContent.appendChild(el("p", { class: "modal-note muted" },
-          "Standings will appear on the leaderboard after this day."));
+
+        // Description: day-specific text first, then liga-wide context.
+        if (c.description) {
+          modalContent.appendChild(el("p", { class: "modal-desc" }, c.description));
+        }
+        if (c.ligaDescription) {
+          modalContent.appendChild(el("p", { class: "modal-desc modal-desc-secondary" },
+            c.ligaDescription));
+        }
+
+        // Register button — always present on championship days.
+        if (c.link) {
+          modalContent.appendChild(el("a", {
+            class: "modal-cta",
+            href: c.link,
+            target: "_blank",
+            rel: "noopener",
+          }, "Register →"));
+        } else {
+          modalContent.appendChild(el("button", {
+            class: "modal-cta",
+            type: "button",
+            disabled: "disabled",
+          }, "Registration opens soon"));
+        }
       } else {
         // Event details
         modalContent.appendChild(el("h3", { class: "modal-title", id: "modal-title-el" }, c.name));
 
-        const lines = [];
-        // Date line: full date for one-off, "Every Mondays" for recurring (single occurrence)
-        lines.push(longDate(c.date));
+        const lines = [longDate(c.date)];
         if (c.startTime || c.endTime) {
           lines.push((c.startTime || "") + (c.endTime ? "–" + c.endTime : ""));
         }
-        const meta = el("div", { class: "modal-meta" }, lines.join(" · "));
-        modalContent.appendChild(meta);
+        modalContent.appendChild(el("div", { class: "modal-meta" }, lines.join(" · ")));
 
         if (c.systemLabel) {
           modalContent.appendChild(el("div", { class: "modal-pills" },
