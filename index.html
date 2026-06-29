@@ -119,16 +119,17 @@
         return { t, players, days, standings };
       }));
 
-      // Calendar at the top of the body.
-      content.appendChild(renderCalendarCard(datasets, systems, filteredEvents));
-
       if (filteredTournaments.length === 0 && filteredEvents.length === 0) {
         content.appendChild(el("section", { class: "card" },
           el("div", { class: "empty" }, "Nothing in this view yet.")));
         return;
       }
 
+      // Leaderboards first — repeat visitors come here to check standings.
       datasets.forEach(ds => content.appendChild(renderLeague(ds, systems)));
+
+      // Then the calendar — secondary, "what's coming up".
+      content.appendChild(renderCalendarCard(datasets, systems, filteredEvents));
     }
 
     function renderTabs(slug, systems, activeSys) {
@@ -146,6 +147,28 @@
     }
 
     function renderLeague({ t, players, days, standings }, systems) {
+      const rows = computeLeaderboard(players, standings);
+
+      // ---- Compact one-line variant for ligas with no results yet ----
+      if (rows.length === 0) {
+        const card = el("section", { class: "card card-compact" });
+        const header = el("div", { class: "league-header" });
+        header.appendChild(el("h2", {}, t.name));
+        if (t.game_system_key) {
+          const sys = systems.find(s => s.key === t.game_system_key);
+          header.appendChild(el("span", { class: "pill" },
+            sys ? sys.label : t.game_system_key));
+        }
+        const upcoming = days.find(d => d.event_date && parseISODate(d.event_date) >= new Date(new Date().setHours(0,0,0,0)));
+        const noteText = upcoming
+          ? `No results yet — first day ${fmtDate(upcoming.event_date)}`
+          : "No results yet";
+        header.appendChild(el("span", { class: "empty-note" }, noteText));
+        card.appendChild(header);
+        return card;
+      }
+
+      // ---- Full table for ligas with standings ----
       const card = el("section", { class: "card" });
       const header = el("div", { class: "league-header" });
       header.appendChild(el("h2", {}, t.name));
@@ -156,23 +179,23 @@
       }
       card.appendChild(header);
 
-      const rows = computeLeaderboard(players, standings);
-      if (rows.length === 0) {
-        card.appendChild(el("div", { class: "empty" }, "No qualifier results posted yet."));
-        return card;
-      }
-
       const table = el("table");
       const thead = el("thead");
+
+      // Per-day header: day name on top, date subtitle below ("Qualifier 1 / May 24")
+      const dayHeaders = days.map(d => {
+        const th = el("th", { class: "day", title: d.name });
+        th.appendChild(el("div", {}, d.name));
+        if (d.event_date) th.appendChild(el("div", { class: "day-date" }, fmtDate(d.event_date)));
+        return th;
+      });
+
       thead.appendChild(el("tr", {}, [
         el("th", {}, "#"),
         el("th", {}, "Player"),
         el("th", {}, "Total"),
-        el("th", {}, "Days"),
-        ...days.map(d =>
-          el("th", { class: "day", title: d.name },
-            d.event_date ? fmtDate(d.event_date) : d.name)
-        ),
+        el("th", { title: "Days attended" }, "Played"),
+        ...dayHeaders,
       ]));
       table.appendChild(thead);
 
@@ -205,7 +228,11 @@
         }
       });
       table.appendChild(tbody);
-      card.appendChild(table);
+
+      // Horizontal scroll wrapper — for ligas with many days on narrow screens.
+      const scrollWrap = el("div", { class: "table-scroll" });
+      scrollWrap.appendChild(table);
+      card.appendChild(scrollWrap);
       return card;
     }
 
@@ -285,7 +312,22 @@
           class: "secondary small", "aria-label": "Previous month",
           onclick: () => { viewDate = addMonths(viewDate, -1); render(); }
         }, "‹"));
-        header.appendChild(el("div", { class: "calendar-month" }, monthLabel(viewDate)));
+
+        const monthRow = el("div", { class: "calendar-month" });
+        monthRow.appendChild(el("span", {}, monthLabel(viewDate)));
+
+        // If the viewed month doesn't contain today, offer a one-click jump.
+        const todayMonth = startOfMonth(today);
+        if (todayMonth.getTime() !== viewDate.getTime()) {
+          monthRow.appendChild(el("button", {
+            class: "calendar-today-hint",
+            type: "button",
+            title: `Jump to ${monthLabel(todayMonth)}`,
+            onclick: () => { viewDate = todayMonth; render(); },
+          }, "Today"));
+        }
+        header.appendChild(monthRow);
+
         header.appendChild(el("button", {
           class: "secondary small", "aria-label": "Next month",
           onclick: () => { viewDate = addMonths(viewDate, 1); render(); }

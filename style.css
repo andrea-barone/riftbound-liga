@@ -333,6 +333,7 @@ button.small {
   align-items: center;
   gap: 10px;
   margin-bottom: 16px;
+  flex-wrap: wrap;
 }
 .league-header h2 { margin: 0; }
 .pill {
@@ -345,6 +346,57 @@ button.small {
   font-weight: 600;
   letter-spacing: 0.2px;
 }
+
+/* Compact one-line variant for empty championships */
+.card.card-compact {
+  padding: 14px 20px;
+  margin-bottom: 12px;
+}
+.card.card-compact .league-header { margin-bottom: 0; }
+.card.card-compact .league-header h2 { font-size: 15px; }
+.league-header .empty-note {
+  margin-left: auto;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+/* Per-day column header — day name on top, date subtitle below */
+th.day .day-date {
+  display: block;
+  margin-top: 2px;
+  font-size: 10px;
+  font-weight: 400;
+  color: var(--muted);
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+/* Horizontal scroll wrapper for wide leaderboard tables on narrow viewports */
+.table-scroll {
+  overflow-x: auto;
+  margin: 0 -22px;
+  padding: 0 22px;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* "Today is in {month}" jump-link in the calendar header */
+.calendar-today-hint {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: 12px;
+  padding: 4px 10px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 500;
+  text-decoration: none;
+  cursor: pointer;
+  border: none;
+  font-family: inherit;
+}
+.calendar-today-hint:hover { background: var(--accent-ring); text-decoration: none; }
 
 /* ---------- Calendar ---------- */
 
@@ -415,7 +467,9 @@ button.small {
   background: var(--accent);
   color: var(--on-accent);
   border-radius: 999px;
+  opacity: 1;     /* override the .out muting when today is shown on a leading/trailing cell */
 }
+.calendar-cell.out.today { background: var(--panel); }   /* dial back the out tint on today */
 .calendar-date {
   font-size: 12px;
   font-weight: 600;
@@ -725,6 +779,9 @@ footer.site {
   .tier-row { grid-template-columns: 1fr 56px 80px 60px 32px; gap: 6px; }
   .row > .field { min-width: 140px; }
   .calendar-cell { min-height: 64px; padding: 4px; }
-  .calendar-event { font-size: 10px; padding: 2px 4px; }
+  /* Keep chips tappable on touch screens — don't shrink below 24px tall */
+  .calendar-event { font-size: 11px; padding: 4px 5px; min-height: 24px; }
   .calendar-weekday { font-size: 10px; padding: 4px 2px; }
+  .table-scroll { margin: 0 -16px; padding: 0 16px; }
+  .card { padding: 18px; }
 }
