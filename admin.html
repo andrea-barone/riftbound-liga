@@ -323,13 +323,25 @@
       </div>
     </section>
 
-    <!-- Days -->
+    <!-- Days (list only — add/edit/import live on dedicated sub-pages) -->
     <section id="days-view" class="card" style="display:none">
-      <h2 id="days-view-title">Qualifier days</h2>
+      <div class="card-header-row">
+        <h2 id="days-view-title">Qualifier days</h2>
+        <button id="add-day-page-btn">+ Add day</button>
+      </div>
       <div id="days-list"></div>
+    </section>
 
-      <hr class="divider" />
-      <h2 class="sub"><span id="day-form-title">Add a new qualifier day</span></h2>
+    <!-- Day-form breadcrumb (visible on day-new / day-edit sub-pages) -->
+    <div id="day-form-breadcrumb" class="admin-breadcrumb" style="display:none">
+      <a href="#" id="day-form-back-link" data-back-to-liga>← Back to liga</a>
+      <span>·</span>
+      <span class="crumb-current" id="day-form-breadcrumb-name">New day</span>
+    </div>
+
+    <!-- Day form sub-page (create or edit) -->
+    <section id="day-form-view" class="card" style="display:none">
+      <h2 id="day-form-title">Add a new qualifier day</h2>
       <div class="row">
         <div class="field" style="flex:2"><label>Day name</label><input type="text" id="new-day-name" placeholder="Qualifier 1" /></div>
         <div class="field" style="flex:1"><label>Date (optional)</label><input type="date" id="new-day-date" /></div>
@@ -345,11 +357,18 @@
       </div>
       <div class="toolbar">
         <button id="add-day">Add day</button>
-        <button id="cancel-edit-day" class="secondary" style="display:none">Cancel edit</button>
+        <button id="cancel-edit-day" class="secondary">Cancel</button>
       </div>
     </section>
 
-    <!-- Import -->
+    <!-- Import breadcrumb (visible on day-import sub-page) -->
+    <div id="day-import-breadcrumb" class="admin-breadcrumb" style="display:none">
+      <a href="#" id="day-import-back-link" data-back-to-liga>← Back to liga</a>
+      <span>·</span>
+      <span class="crumb-current" id="day-import-breadcrumb-name">Import standings</span>
+    </div>
+
+    <!-- Import standings sub-page -->
     <section id="import-view" class="card" style="display:none">
       <h2>Import standings <span id="import-day-name" class="muted"></span></h2>
       <p class="muted" style="margin-top:0; font-size:13px">
@@ -418,6 +437,9 @@
       ligaBreadcrumb: document.getElementById("liga-breadcrumb"),
       tournament:    document.getElementById("tournament-view"),
       days:          document.getElementById("days-view"),
+      dayFormBreadcrumb: document.getElementById("day-form-breadcrumb"),
+      dayFormView:   document.getElementById("day-form-view"),
+      dayImportBreadcrumb: document.getElementById("day-import-breadcrumb"),
       import_:       document.getElementById("import-view"),
     };
     function showOnly(...keys) {
@@ -430,14 +452,17 @@
     // Maps a view name → which section cards should be visible inside the shell.
     // The shell + org banner are managed separately (via showOnly in bootstrap).
     const VIEW_MAP = {
-      overview:   ["overview"],
-      settings:   ["orgSettings"],
-      team:       ["team"],
-      systems:    ["systems"],
-      events:     ["events"],
-      ligas:      ["ligaList"],
-      "liga-new": ["ligaNewBreadcrumb", "ligaNew"],
-      liga:       ["ligaBreadcrumb", "tournament", "days"],
+      overview:    ["overview"],
+      settings:    ["orgSettings"],
+      team:        ["team"],
+      systems:     ["systems"],
+      events:      ["events"],
+      ligas:       ["ligaList"],
+      "liga-new":  ["ligaNewBreadcrumb", "ligaNew"],
+      liga:        ["ligaBreadcrumb", "tournament", "days"],
+      "day-new":   ["dayFormBreadcrumb", "dayFormView"],
+      "day-edit":  ["dayFormBreadcrumb", "dayFormView"],
+      "day-import":["dayImportBreadcrumb", "import_"],
     };
     const VIEW_KEYS = Object.keys(VIEW_MAP);
 
@@ -450,43 +475,87 @@
       // Hide everything inside the shell first
       const ALL = ["overview","orgSettings","team","systems","events",
                    "ligaList","ligaNewBreadcrumb","ligaNew",
-                   "ligaBreadcrumb","tournament","days","import_"];
+                   "ligaBreadcrumb","tournament","days",
+                   "dayFormBreadcrumb","dayFormView",
+                   "dayImportBreadcrumb","import_"];
       ALL.forEach(k => views[k].style.display = "none");
 
       // Show what this view needs
       VIEW_MAP[name].forEach(k => views[k].style.display = "");
 
-      // Leaving the liga sub-view: clear the "Managing ✓" indicator on rows.
-      if (name !== "liga") {
+      // Group: views considered "inside a liga" (keep selectedTournamentId)
+      const LIGA_SCOPED = new Set(["liga", "day-new", "day-edit", "day-import"]);
+      if (!LIGA_SCOPED.has(name)) {
         selectedTournamentId = null;
         if (typeof renderLigaList === "function") renderLigaList();
       }
 
-      // Sidebar active state — sub-views (liga / liga-new) keep "Ligas" highlighted.
-      const navKey = (name === "liga" || name === "liga-new") ? "ligas" : name;
+      // Sidebar active state — all liga-scoped sub-views keep "Ligas" highlighted.
+      const navKey = (name === "liga-new" || LIGA_SCOPED.has(name)) ? "ligas" : name;
       document.querySelectorAll(".admin-nav a[data-view]").forEach(a => {
         a.classList.toggle("active", a.dataset.view === navKey);
       });
+
+      // Per-view setup: breadcrumbs, form modes, etc.
+      if (name === "liga") {
+        const t = tournaments.find(x => x.id === (opts.ligaId || selectedTournamentId));
+        if (t) document.getElementById("liga-breadcrumb-name").textContent = t.name;
+      }
+      if (name === "day-new") {
+        clearDayForm();
+        document.getElementById("day-form-title").textContent = "Add a new qualifier day";
+        document.getElementById("add-day").textContent = "Add day";
+        document.getElementById("day-form-breadcrumb-name").textContent = "New day";
+        updateBackToLigaLinks();
+      }
+      if (name === "day-edit") {
+        const dayId = opts.dayId || (new URLSearchParams(location.search)).get("day");
+        const d = days.find(x => x.id === dayId);
+        if (!d) { setView("liga"); return; }
+        loadDayForEdit(d.id);
+        document.getElementById("day-form-breadcrumb-name").textContent = `Editing ${d.name}`;
+        updateBackToLigaLinks();
+      }
+      if (name === "day-import") {
+        const dayId = opts.dayId || (new URLSearchParams(location.search)).get("day");
+        const d = days.find(x => x.id === dayId);
+        if (!d) { setView("liga"); return; }
+        openImport(d.id);
+        document.getElementById("day-import-breadcrumb-name").textContent = `Import standings · ${d.name}`;
+        updateBackToLigaLinks();
+      }
+      if (name === "overview") refreshOverviewStats();
 
       // URL state
       const params = new URLSearchParams();
       if (org) params.set("org", org.slug);
       params.set("view", name);
-      if (name === "liga" && (opts.ligaId || selectedTournamentId)) {
+      if (LIGA_SCOPED.has(name) && (opts.ligaId || selectedTournamentId)) {
         params.set("liga", opts.ligaId || selectedTournamentId);
+      }
+      if ((name === "day-edit" || name === "day-import") &&
+          (opts.dayId || editingDayMetaId || editingDayId)) {
+        params.set("day", opts.dayId || editingDayMetaId || editingDayId);
       }
       history.replaceState(null, "", `./admin.html?${params.toString()}`);
 
-      // Refresh derived UI for the active section
-      if (name === "overview") refreshOverviewStats();
-      if (name === "liga") {
-        const t = tournaments.find(x => x.id === (opts.ligaId || selectedTournamentId));
-        if (t) {
-          document.getElementById("liga-breadcrumb-name").textContent = t.name;
-        }
-      }
       window.scrollTo({ top: 0, behavior: "smooth" });
     }
+
+    function updateBackToLigaLinks() {
+      if (!tournament) return;
+      const text = `← Back to ${tournament.name}`;
+      document.querySelectorAll("[data-back-to-liga]").forEach(a => {
+        a.textContent = text;
+        a.onclick = (e) => { e.preventDefault(); setView("liga", { ligaId: tournament.id }); };
+      });
+    }
+
+    // "+ Add day" button on the liga's Days card
+    document.getElementById("add-day-page-btn").addEventListener("click", () => {
+      if (!tournament) return;
+      setView("day-new", { ligaId: tournament.id });
+    });
 
     function refreshOverviewStats() {
       document.getElementById("stat-ligas").textContent   = tournaments.length;
@@ -679,7 +748,8 @@
       // can load the right liga details if needed.
       const params = new URLSearchParams(location.search);
       const wantedView = params.get("view") || opts.view || "overview";
-      selectedTournamentId = (wantedView === "liga")
+      const ligaScopedViews = new Set(["liga", "day-new", "day-edit", "day-import"]);
+      selectedTournamentId = ligaScopedViews.has(wantedView)
         ? (params.get("liga") || opts.ligaId || null)
         : null;
 
@@ -688,12 +758,22 @@
       await Promise.all([refreshEvents(), refreshTournaments(), refreshTeam()]);
 
       // Final routing — if the requested liga doesn't exist, fall back to ligas list.
-      if (wantedView === "liga") {
-        if (selectedTournamentId && tournaments.find(t => t.id === selectedTournamentId)) {
-          setView("liga", { ligaId: selectedTournamentId });
-        } else {
+      if (ligaScopedViews.has(wantedView)) {
+        if (!selectedTournamentId || !tournaments.find(t => t.id === selectedTournamentId)) {
           selectedTournamentId = null;
           setView("ligas");
+          return;
+        }
+        if (wantedView === "liga" || wantedView === "day-new") {
+          setView(wantedView, { ligaId: selectedTournamentId });
+        } else {
+          // day-edit / day-import — need a valid day id too
+          const dayId = params.get("day");
+          if (dayId && days.find(d => d.id === dayId)) {
+            setView(wantedView, { ligaId: selectedTournamentId, dayId });
+          } else {
+            setView("liga", { ligaId: selectedTournamentId });
+          }
         }
       } else {
         setView(VIEW_KEYS.includes(wantedView) ? wantedView : "overview");
@@ -1267,9 +1347,9 @@
         ]));
         const tools = el("div", { class: "toolbar" });
         tools.appendChild(el("button", { class: "secondary small",
-          onclick: () => loadDayForEdit(d.id) }, "Edit"));
+          onclick: () => setView("day-edit", { dayId: d.id }) }, "Edit"));
         tools.appendChild(el("button", { class: "secondary small",
-          onclick: () => openImport(d.id) }, dayStandings.length ? "Re-import" : "Import"));
+          onclick: () => setView("day-import", { dayId: d.id }) }, dayStandings.length ? "Re-import" : "Import"));
         tools.appendChild(el("button", { class: "danger small",
           onclick: () => deleteDay(d.id) }, "Delete"));
         head.appendChild(tools);
@@ -1307,9 +1387,6 @@
       editingDayMetaId = null;
       ["new-day-name","new-day-date","new-day-start","new-day-end","new-day-link","new-day-description"]
         .forEach(id => { document.getElementById(id).value = ""; });
-      document.getElementById("day-form-title").textContent = "Add a new qualifier day";
-      document.getElementById("add-day").textContent = "Add day";
-      document.getElementById("cancel-edit-day").style.display = "none";
     }
     function loadDayForEdit(id) {
       const d = days.find(x => x.id === id);
@@ -1323,14 +1400,11 @@
       document.getElementById("new-day-description").value = d.description || "";
       document.getElementById("day-form-title").textContent = `Editing: ${d.name}`;
       document.getElementById("add-day").textContent = "Update day";
-      document.getElementById("cancel-edit-day").style.display = "";
-      renderDays();
-      document.getElementById("days-view").scrollIntoView({ behavior: "smooth", block: "start" });
     }
 
     document.getElementById("cancel-edit-day").addEventListener("click", () => {
       clearDayForm();
-      renderDays();
+      if (tournament) setView("liga", { ligaId: tournament.id }); else setView("ligas");
     });
 
     document.getElementById("add-day").addEventListener("click", async () => {
@@ -1345,6 +1419,7 @@
         clearDayForm();
         await refreshTournaments();
         flash(`Updated ${f.name}.`, "ok");
+        setView("liga", { ligaId: tournament.id });
         return;
       }
 
@@ -1356,6 +1431,7 @@
       clearDayForm();
       await refreshTournaments();
       flash(`Added ${f.name}.`, "ok");
+      setView("liga", { ligaId: tournament.id });
     });
 
     async function deleteDay(dayId) {
@@ -1382,13 +1458,11 @@
       document.getElementById("import-day-name").textContent = `— ${d.name}`;
       document.getElementById("import-text").value = "";
       document.getElementById("import-preview").innerHTML = "";
-      views.import_.style.display = "";
-      views.import_.scrollIntoView({ behavior: "smooth" });
     }
     document.getElementById("cancel-import").addEventListener("click", () => {
-      views.import_.style.display = "none";
       editingDayId = null;
       pendingParsed = null;
+      if (tournament) setView("liga", { ligaId: tournament.id }); else setView("ligas");
     });
     document.getElementById("preview-import").addEventListener("click", () => {
       const text = document.getElementById("import-text").value;
@@ -1444,11 +1518,11 @@
       const { error: sErr } = await supabase.from("standings").insert(inserts);
       if (sErr) return flash(sErr.message, "err");
 
-      views.import_.style.display = "none";
       editingDayId = null;
       pendingParsed = null;
       await refreshTournaments();
       flash(`Saved ${inserts.length} results.`, "ok");
+      if (tournament) setView("liga", { ligaId: tournament.id });
     });
 
     bootstrap().catch(e => flash(e.message || String(e), "err"));
