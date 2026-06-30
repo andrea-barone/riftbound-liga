@@ -193,15 +193,27 @@
 
     <!-- Events (one-off + recurring) -->
     <section id="events-view" class="card" style="display:none">
-      <h2>Events</h2>
+      <div class="card-header-row">
+        <h2>Events</h2>
+        <button data-view-to="event-new">+ Add event</button>
+      </div>
       <p class="muted" style="margin-top:0; font-size:13px;">
         Non-championship happenings — pre-releases, casual nights, special tournaments.
         One-off events sit on a single date; recurring events repeat weekly.
       </p>
       <div id="events-list"></div>
+    </section>
 
-      <hr class="divider" />
-      <h2 class="sub"><span id="event-form-title">Add an event</span></h2>
+    <!-- Event-form breadcrumb (visible on event-new / event-edit sub-pages) -->
+    <div id="event-form-breadcrumb" class="admin-breadcrumb" style="display:none">
+      <a href="?view=events" data-view="events">← Back to Events</a>
+      <span>·</span>
+      <span class="crumb-current" id="event-form-breadcrumb-name">New event</span>
+    </div>
+
+    <!-- Event form sub-page (create or edit) -->
+    <section id="event-form-view" class="card" style="display:none">
+      <h2 id="event-form-title">Add an event</h2>
 
       <div class="field">
         <label>Type</label>
@@ -255,7 +267,7 @@
 
       <div class="toolbar">
         <button id="save-event">Save event</button>
-        <button id="cancel-edit-event" class="secondary" style="display:none">Cancel edit</button>
+        <button id="cancel-edit-event" class="secondary">Cancel</button>
       </div>
     </section>
 
@@ -431,6 +443,8 @@
       team:          document.getElementById("team-view"),
       systems:       document.getElementById("systems-view"),
       events:        document.getElementById("events-view"),
+      eventFormBreadcrumb: document.getElementById("event-form-breadcrumb"),
+      eventFormView: document.getElementById("event-form-view"),
       ligaList:      document.getElementById("liga-list-view"),
       ligaNewBreadcrumb: document.getElementById("liga-new-breadcrumb"),
       ligaNew:       document.getElementById("liga-new-view"),
@@ -452,17 +466,19 @@
     // Maps a view name → which section cards should be visible inside the shell.
     // The shell + org banner are managed separately (via showOnly in bootstrap).
     const VIEW_MAP = {
-      overview:    ["overview"],
-      settings:    ["orgSettings"],
-      team:        ["team"],
-      systems:     ["systems"],
-      events:      ["events"],
-      ligas:       ["ligaList"],
-      "liga-new":  ["ligaNewBreadcrumb", "ligaNew"],
-      liga:        ["ligaBreadcrumb", "tournament", "days"],
-      "day-new":   ["dayFormBreadcrumb", "dayFormView"],
-      "day-edit":  ["dayFormBreadcrumb", "dayFormView"],
-      "day-import":["dayImportBreadcrumb", "import_"],
+      overview:     ["overview"],
+      settings:     ["orgSettings"],
+      team:         ["team"],
+      systems:      ["systems"],
+      events:       ["events"],
+      "event-new":  ["eventFormBreadcrumb", "eventFormView"],
+      "event-edit": ["eventFormBreadcrumb", "eventFormView"],
+      ligas:        ["ligaList"],
+      "liga-new":   ["ligaNewBreadcrumb", "ligaNew"],
+      liga:         ["ligaBreadcrumb", "tournament", "days"],
+      "day-new":    ["dayFormBreadcrumb", "dayFormView"],
+      "day-edit":   ["dayFormBreadcrumb", "dayFormView"],
+      "day-import": ["dayImportBreadcrumb", "import_"],
     };
     const VIEW_KEYS = Object.keys(VIEW_MAP);
 
@@ -473,7 +489,8 @@
       currentView = name;
 
       // Hide everything inside the shell first
-      const ALL = ["overview","orgSettings","team","systems","events",
+      const ALL = ["overview","orgSettings","team","systems",
+                   "events","eventFormBreadcrumb","eventFormView",
                    "ligaList","ligaNewBreadcrumb","ligaNew",
                    "ligaBreadcrumb","tournament","days",
                    "dayFormBreadcrumb","dayFormView",
@@ -490,8 +507,10 @@
         if (typeof renderLigaList === "function") renderLigaList();
       }
 
-      // Sidebar active state — all liga-scoped sub-views keep "Ligas" highlighted.
-      const navKey = (name === "liga-new" || LIGA_SCOPED.has(name)) ? "ligas" : name;
+      // Sidebar active state — sub-views keep their parent section highlighted.
+      let navKey = name;
+      if (name === "liga-new" || LIGA_SCOPED.has(name)) navKey = "ligas";
+      else if (name === "event-new" || name === "event-edit") navKey = "events";
       document.querySelectorAll(".admin-nav a[data-view]").forEach(a => {
         a.classList.toggle("active", a.dataset.view === navKey);
       });
@@ -524,6 +543,19 @@
         document.getElementById("day-import-breadcrumb-name").textContent = `Import standings · ${d.name}`;
         updateBackToLigaLinks();
       }
+      if (name === "event-new") {
+        clearEventForm();
+        document.getElementById("event-form-title").textContent = "Add an event";
+        document.getElementById("save-event").textContent = "Save event";
+        document.getElementById("event-form-breadcrumb-name").textContent = "New event";
+      }
+      if (name === "event-edit") {
+        const eventId = opts.eventId || (new URLSearchParams(location.search)).get("event");
+        const ev = events.find(x => x.id === eventId);
+        if (!ev) { setView("events"); return; }
+        loadEventForEdit(ev.id);
+        document.getElementById("event-form-breadcrumb-name").textContent = `Editing ${ev.name}`;
+      }
       if (name === "overview") refreshOverviewStats();
 
       // URL state
@@ -536,6 +568,9 @@
       if ((name === "day-edit" || name === "day-import") &&
           (opts.dayId || editingDayMetaId || editingDayId)) {
         params.set("day", opts.dayId || editingDayMetaId || editingDayId);
+      }
+      if (name === "event-edit" && (opts.eventId || editingEventId)) {
+        params.set("event", opts.eventId || editingEventId);
       }
       history.replaceState(null, "", `./admin.html?${params.toString()}`);
 
@@ -1007,7 +1042,7 @@
         const tools = el("div", { class: "toolbar" });
         tools.appendChild(el("button", {
           class: "secondary small",
-          onclick: () => loadEventForEdit(e.id),
+          onclick: () => setView("event-edit", { eventId: e.id }),
         }, "Edit"));
         tools.appendChild(el("button", {
           class: "danger small",
@@ -1062,9 +1097,6 @@
       document.getElementById("event-system").value = "";
       document.getElementById("event-dow").value = "0";
       setEventKind("oneoff");
-      document.getElementById("event-form-title").textContent = "Add an event";
-      document.getElementById("save-event").textContent = "Save event";
-      document.getElementById("cancel-edit-event").style.display = "none";
     }
 
     function loadEventForEdit(id) {
@@ -1073,7 +1105,6 @@
       editingEventId = id;
       document.getElementById("event-form-title").textContent = `Editing: ${e.name}`;
       document.getElementById("save-event").textContent = "Update event";
-      document.getElementById("cancel-edit-event").style.display = "";
 
       document.getElementById("event-name").value = e.name || "";
       document.getElementById("event-system").value = e.game_system_key || "";
@@ -1092,13 +1123,11 @@
         document.getElementById("event-starts-on").value = e.starts_on || "";
         document.getElementById("event-ends-on").value = e.ends_on || "";
       }
-      renderEventsList();
-      document.getElementById("events-view").scrollIntoView({ behavior: "smooth", block: "start" });
     }
 
     document.getElementById("cancel-edit-event").addEventListener("click", () => {
       clearEventForm();
-      renderEventsList();
+      setView("events");
     });
 
     document.getElementById("save-event").addEventListener("click", async () => {
@@ -1118,6 +1147,7 @@
         }
         clearEventForm();
         await refreshEvents();
+        setView("events");
       } catch (e) { flash(e.message || String(e), "err"); }
     });
 
