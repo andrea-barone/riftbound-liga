@@ -379,24 +379,24 @@ th.day .day-date {
   -webkit-overflow-scrolling: touch;
 }
 
-/* "Today is in {month}" jump-link in the calendar header */
+/* "Jump to current month" button — sits in the calendar nav cluster.
+   Styled to match the prev/next arrows so the cluster reads as one unit. */
 .calendar-today-hint {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  margin-left: 12px;
-  padding: 4px 10px;
-  background: var(--accent-soft);
-  color: var(--accent);
-  border-radius: 999px;
-  font-size: 12px;
-  font-weight: 500;
-  text-decoration: none;
-  cursor: pointer;
-  border: none;
+  height: var(--h-control);
+  padding: 0 14px;
+  background: var(--panel);
+  color: var(--text-strong);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
   font-family: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
 }
-.calendar-today-hint:hover { background: var(--accent-ring); text-decoration: none; }
+.calendar-today-hint:hover {
+  background: var(--panel-2);
+  text-decoration: none;
+}
 
 /* ---------- Calendar ---------- */
 
@@ -412,12 +412,16 @@ th.day .day-date {
 }
 .calendar-month {
   flex: 1;
-  text-align: center;
+  text-align: left;
   font-size: 16px;
   font-weight: 600;
   color: var(--text-strong);
 }
-.calendar-header button {
+.calendar-nav {
+  display: flex;
+  gap: 6px;
+}
+.calendar-nav-arrow {
   width: 36px;
   padding: 0;
   font-size: 18px;
@@ -503,6 +507,116 @@ th.day .day-date {
 .calendar-event.event {
   background: #fef3c7;   /* amber-100 */
   color: #92400e;        /* amber-800 */
+}
+
+/* ---------- Admin shell (sidebar + main) ---------- */
+
+.admin-shell {
+  display: grid;
+  grid-template-columns: 220px minmax(0, 1fr);
+  gap: 24px;
+  align-items: start;
+}
+.admin-nav {
+  position: sticky;
+  top: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+.admin-nav a {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 12px;
+  border-radius: var(--radius-sm);
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text);
+  text-decoration: none;
+  transition: background-color 0.12s, color 0.12s;
+}
+.admin-nav a:hover {
+  background: var(--panel-2);
+  text-decoration: none;
+}
+.admin-nav a.active {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+.admin-nav .section-label {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  color: var(--muted);
+  font-weight: 600;
+  padding: 12px 12px 4px;
+}
+
+.admin-main { min-width: 0; }
+
+/* Breadcrumb shown above the liga sub-view */
+.admin-breadcrumb {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 12px;
+  font-size: 13px;
+  color: var(--muted);
+}
+.admin-breadcrumb a { color: var(--muted); }
+.admin-breadcrumb a:hover { color: var(--text-strong); text-decoration: none; }
+.admin-breadcrumb .crumb-current { color: var(--text-strong); font-weight: 500; }
+
+/* Overview view */
+.overview-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 10px;
+  margin-bottom: 18px;
+}
+.overview-stat {
+  padding: 16px;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+.overview-stat .num {
+  font-size: 24px;
+  font-weight: 700;
+  color: var(--text-strong);
+  line-height: 1;
+}
+.overview-stat .label {
+  margin-top: 6px;
+  font-size: 11px;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  font-weight: 600;
+}
+.overview-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+
+@media (max-width: 720px) {
+  .admin-shell {
+    grid-template-columns: 1fr;
+    gap: 16px;
+  }
+  .admin-nav {
+    position: static;
+    flex-direction: row;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    flex-wrap: nowrap;
+    padding: 6px;
+    gap: 4px;
+  }
+  .admin-nav a { white-space: nowrap; padding: 8px 12px; }
+  .admin-nav .section-label { display: none; }
 }
 
 /* ---------- Event details modal ---------- */

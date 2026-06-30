@@ -306,32 +306,31 @@
       function render() {
         body.innerHTML = "";
 
-        // Header
+        // Header: month label on the left, nav cluster on the right.
         const header = el("div", { class: "calendar-header" });
-        header.appendChild(el("button", {
-          class: "secondary small", "aria-label": "Previous month",
-          onclick: () => { viewDate = addMonths(viewDate, -1); render(); }
-        }, "‹"));
+        header.appendChild(el("div", { class: "calendar-month" }, monthLabel(viewDate)));
 
-        const monthRow = el("div", { class: "calendar-month" });
-        monthRow.appendChild(el("span", {}, monthLabel(viewDate)));
+        const nav = el("div", { class: "calendar-nav" });
 
-        // If the viewed month doesn't contain today, offer a one-click jump.
+        // "Today" — visible only when the viewed month isn't today's month.
         const todayMonth = startOfMonth(today);
         if (todayMonth.getTime() !== viewDate.getTime()) {
-          monthRow.appendChild(el("button", {
+          nav.appendChild(el("button", {
             class: "calendar-today-hint",
             type: "button",
             title: `Jump to ${monthLabel(todayMonth)}`,
             onclick: () => { viewDate = todayMonth; render(); },
           }, "Today"));
         }
-        header.appendChild(monthRow);
-
-        header.appendChild(el("button", {
-          class: "secondary small", "aria-label": "Next month",
+        nav.appendChild(el("button", {
+          class: "secondary calendar-nav-arrow", "aria-label": "Previous month",
+          onclick: () => { viewDate = addMonths(viewDate, -1); render(); }
+        }, "‹"));
+        nav.appendChild(el("button", {
+          class: "secondary calendar-nav-arrow", "aria-label": "Next month",
           onclick: () => { viewDate = addMonths(viewDate, 1); render(); }
         }, "›"));
+        header.appendChild(nav);
         body.appendChild(header);
 
         // Weekday labels
