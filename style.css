@@ -113,6 +113,15 @@ main {
   color: var(--muted);
   margin-top: 20px;
 }
+.card-header-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+}
+.card-header-row h2 { margin: 0; }
 .card .divider {
   border: none;
   border-top: 1px solid var(--border);
