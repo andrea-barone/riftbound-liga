@@ -325,9 +325,7 @@
   <script type="module">
     import {
       supabase,
-      getOrganizations, getOrganizationBySlug, getMyOrganizations,
-      createOrganization, updateOrganization, deleteOrganization,
-      getOrgAdmins, addOrgAdmin, removeOrgAdmin,
+      getMyOrganizations,
       getGameSystems, createGameSystem, updateGameSystem, deleteGameSystem,
       getEvents, createEvent, updateEvent, deleteEvent,
       getTournaments, getDays, getPlayers, getStandings,
@@ -350,13 +348,10 @@
     // -----------------------------------------------------------------
     const views = {
       signin:        document.getElementById("signin-view"),
-      createOrg:     document.getElementById("create-org-view"),
-      orgPicker:     document.getElementById("org-picker-view"),
-      orgBanner:     document.getElementById("org-banner"),
+      denied:        document.getElementById("denied-view"),
+      adminToolbar:  document.getElementById("admin-toolbar"),
       adminShell:    document.getElementById("admin-shell"),
       overview:      document.getElementById("overview-view"),
-      orgSettings:   document.getElementById("org-settings-view"),
-      team:          document.getElementById("team-view"),
       systems:       document.getElementById("systems-view"),
       events:        document.getElementById("events-view"),
       eventFormBreadcrumb: document.getElementById("event-form-breadcrumb"),
@@ -380,11 +375,8 @@
     // Sectioned admin routing
     // -----------------------------------------------------------------
     // Maps a view name → which section cards should be visible inside the shell.
-    // The shell + org banner are managed separately (via showOnly in bootstrap).
     const VIEW_MAP = {
       overview:     ["overview"],
-      settings:     ["orgSettings"],
-      team:         ["team"],
       systems:      ["systems"],
       events:       ["events"],
       "event-new":  ["eventFormBreadcrumb", "eventFormView"],
@@ -405,7 +397,7 @@
       currentView = name;
 
       // Hide everything inside the shell first
-      const ALL = ["overview","orgSettings","team","systems",
+      const ALL = ["overview","systems",
                    "events","eventFormBreadcrumb","eventFormView",
                    "ligaList","ligaNewBreadcrumb","ligaNew",
                    "ligaBreadcrumb","tournament","days",
@@ -476,7 +468,6 @@
 
       // URL state
       const params = new URLSearchParams();
-      if (org) params.set("org", org.slug);
       params.set("view", name);
       if (LIGA_SCOPED.has(name) && (opts.ligaId || selectedTournamentId)) {
         params.set("liga", opts.ligaId || selectedTournamentId);
@@ -512,8 +503,6 @@
       document.getElementById("stat-ligas").textContent   = tournaments.length;
       document.getElementById("stat-events").textContent  = events.length;
       document.getElementById("stat-systems").textContent = gameSystems.length;
-      // Team admin count — populated by refreshTeam (lives in state below).
-      document.getElementById("stat-team").textContent    = teamAdmins.length;
     }
 
     // Sidebar nav click handlers
@@ -550,11 +539,9 @@
     // -----------------------------------------------------------------
     // State
     // -----------------------------------------------------------------
-    let myOrgs = [];
-    let org = null;             // currently-selected org
-    let gameSystems = [];       // game systems for the selected org
-    let events = [];            // events for the selected org
-    let teamAdmins = [];        // org admin emails (mirrors UI list)
+    let org = null;             // the single org
+    let gameSystems = [];       // game systems for the org
+    let events = [];            // events for the org
     let editingEventId = null;
     let tournaments = [];
     let selectedTournamentId = null;
@@ -593,24 +580,15 @@
       whoEl.textContent = session.user.email;
       signOutBtn.style.display = "";
 
-      myOrgs = await getMyOrganizations();
-
+      // Single-tenant: find the (one) org and check the current user is one
+      // of its admins. If not, show the denied view.
+      const myOrgs = await getMyOrganizations();
       if (myOrgs.length === 0) {
-        showOnly("createOrg");
+        document.getElementById("denied-email").textContent = session.user.email;
+        showOnly("denied", "adminToolbar");
         return;
       }
-
-      // If admin.html?org=slug is in the URL, try to auto-select it.
-      const params = new URLSearchParams(location.search);
-      const wantedSlug = (params.get("org") || "").toLowerCase();
-      let target = wantedSlug ? myOrgs.find(o => o.slug === wantedSlug) : null;
-      if (!target && myOrgs.length === 1) target = myOrgs[0];
-
-      if (target) {
-        await selectOrg(target.id);
-      } else {
-        showOrgPicker();
-      }
+      await enterOrg(myOrgs[0]);
     }
 
     supabase.auth.onAuthStateChange(() => {
@@ -618,95 +596,25 @@
     });
 
     // -----------------------------------------------------------------
-    // Create-org flows (both first-time and additional)
+    // Enter the (single) org → load data, route to the requested view
     // -----------------------------------------------------------------
-    async function handleCreateOrg(nameEl, slugEl) {
-      const name = document.getElementById(nameEl).value.trim();
-      const slug = document.getElementById(slugEl).value.trim().toLowerCase();
-      if (!name || !slug) return flash("Name and slug are required.", "err");
-      if (!/^[a-z0-9][a-z0-9-]{1,30}[a-z0-9]$/.test(slug)) {
-        return flash("Slug must be 3–32 chars, lowercase letters/digits/hyphens, can't start or end with a hyphen.", "err");
-      }
-      try {
-        const newOrg = await createOrganization(slug, name);
-        flash(`Created "${name}".`, "ok");
-        myOrgs = await getMyOrganizations();
-        await selectOrg(newOrg.id);
-      } catch (e) {
-        flash(e.message || String(e), "err");
-      }
-    }
-    document.getElementById("create-org").addEventListener("click",
-      () => handleCreateOrg("new-org-name", "new-org-slug"));
-    document.getElementById("picker-create-org").addEventListener("click",
-      () => handleCreateOrg("picker-org-name", "picker-org-slug"));
+    async function enterOrg(theOrg) {
+      org = theOrg;
 
-    // -----------------------------------------------------------------
-    // Org picker
-    // -----------------------------------------------------------------
-    function showOrgPicker() {
-      org = null;
-      showOnly("orgPicker");
-      const wrap = document.getElementById("org-list");
-      wrap.innerHTML = "";
-      myOrgs.forEach(o => {
-        const row = el("div", { class: "liga-row" }, [
-          el("div", { class: "liga-info" }, [
-            el("strong", {}, o.name),
-            el("span", { class: "meta" }, ` · /${o.slug}`),
-          ]),
-        ]);
-        const tools = el("div", { class: "toolbar" });
-        tools.appendChild(el("button", {
-          onclick: () => selectOrg(o.id),
-        }, "Manage"));
-        row.appendChild(tools);
-        wrap.appendChild(row);
-      });
-    }
-
-    document.getElementById("switch-org").addEventListener("click", () => {
-      // Reset URL ?org param when switching
-      history.replaceState(null, "", "./admin.html");
-      org = null; selectedTournamentId = null; tournament = null;
-      tournaments = []; days = []; players = []; standings = [];
-      teamAdmins = [];
-      showOrgPicker();
-    });
-
-    // -----------------------------------------------------------------
-    // Select an org → load all its data, then route to a view
-    // -----------------------------------------------------------------
-    async function selectOrg(id, opts = {}) {
-      org = myOrgs.find(o => o.id === id);
-      if (!org) {
-        showOrgPicker();
-        return;
-      }
-
-      document.getElementById("org-banner-name").textContent = org.name;
-      const publicLink = `./?org=${encodeURIComponent(org.slug)}`;
-      const linkEl = document.getElementById("org-public-link");
-      linkEl.href = publicLink;
-      linkEl.textContent = `${location.origin}${location.pathname.replace(/admin\.html$/, "")}?org=${org.slug}`;
-      document.getElementById("org-name").value = org.name;
-      document.getElementById("org-slug").value = org.slug;
-
-      // Reveal the shell, hide all the pre-org views.
-      showOnly("orgBanner", "adminShell");
+      showOnly("adminToolbar", "adminShell");
 
       // Pre-route: decide what we want to land on so refreshTournaments
       // can load the right liga details if needed.
       const params = new URLSearchParams(location.search);
-      const wantedView = params.get("view") || opts.view || "overview";
+      const wantedView = params.get("view") || "overview";
       const ligaScopedViews = new Set(["liga", "day-new", "day-edit", "day-import"]);
       selectedTournamentId = ligaScopedViews.has(wantedView)
-        ? (params.get("liga") || opts.ligaId || null)
+        ? (params.get("liga") || null)
         : null;
 
       // Load everything in parallel.
       await refreshGameSystems();
-      await Promise.all([refreshEvents(), refreshTournaments(), refreshTeam()]);
+      await Promise.all([refreshEvents(), refreshTournaments()]);
 
       // Final routing — if the requested liga doesn't exist, fall back to ligas list.
       if (ligaScopedViews.has(wantedView)) {
@@ -718,7 +626,6 @@
         if (wantedView === "liga" || wantedView === "day-new") {
           setView(wantedView, { ligaId: selectedTournamentId });
         } else {
-          // day-edit / day-import — need a valid day id too
           const dayId = params.get("day");
           if (dayId && days.find(d => d.id === dayId)) {
             setView(wantedView, { ligaId: selectedTournamentId, dayId });
@@ -730,73 +637,6 @@
         setView(VIEW_KEYS.includes(wantedView) ? wantedView : "overview");
       }
     }
-
-    // -----------------------------------------------------------------
-    // Org settings: save / delete
-    // -----------------------------------------------------------------
-    document.getElementById("save-org").addEventListener("click", async () => {
-      const name = document.getElementById("org-name").value.trim();
-      const slug = document.getElementById("org-slug").value.trim().toLowerCase();
-      if (!name || !slug) return flash("Name and slug required.", "err");
-      try {
-        await updateOrganization(org.id, { name, slug });
-        flash("Saved.", "ok");
-        myOrgs = await getMyOrganizations();
-        await selectOrg(org.id);
-      } catch (e) { flash(e.message, "err"); }
-    });
-
-    document.getElementById("delete-org").addEventListener("click", async () => {
-      if (!confirm(`Delete organization "${org.name}" and ALL its ligas, days, and standings? This cannot be undone.`)) return;
-      try {
-        await deleteOrganization(org.id);
-        flash("Organization deleted.", "ok");
-        myOrgs = await getMyOrganizations();
-        history.replaceState(null, "", "./admin.html");
-        if (myOrgs.length === 0) showOnly("createOrg");
-        else showOrgPicker();
-      } catch (e) { flash(e.message, "err"); }
-    });
-
-    // -----------------------------------------------------------------
-    // Team management
-    // -----------------------------------------------------------------
-    async function refreshTeam() {
-      const wrap = document.getElementById("team-list");
-      wrap.innerHTML = "";
-      teamAdmins = await getOrgAdmins(org.id);
-      const admins = teamAdmins;
-      admins.forEach(a => {
-        const row = el("div", { class: "liga-row" }, [
-          el("div", { class: "liga-info" }, [
-            el("strong", {}, a.email),
-          ]),
-        ]);
-        const tools = el("div", { class: "toolbar" });
-        tools.appendChild(el("button", {
-          class: "danger",
-          onclick: async () => {
-            if (admins.length === 1) return flash("Can't remove the last admin.", "err");
-            if (!confirm(`Remove ${a.email}?`)) return;
-            try { await removeOrgAdmin(org.id, a.email); await refreshTeam(); flash("Removed.", "ok"); }
-            catch (e) { flash(e.message, "err"); }
-          },
-        }, "Remove"));
-        row.appendChild(tools);
-        wrap.appendChild(row);
-      });
-      if (currentView === "overview") refreshOverviewStats();
-    }
-    document.getElementById("add-admin").addEventListener("click", async () => {
-      const email = document.getElementById("new-admin-email").value.trim();
-      if (!email) return flash("Enter an email.", "err");
-      try {
-        await addOrgAdmin(org.id, email);
-        document.getElementById("new-admin-email").value = "";
-        await refreshTeam();
-        flash("Admin added.", "ok");
-      } catch (e) { flash(e.message, "err"); }
-    });
 
     // -----------------------------------------------------------------
     // Game systems (within selected org)
