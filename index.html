@@ -3,25 +3,27 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <meta name="theme-color" content="#4f46e5" />
-  <title>Store Championships</title>
+  <meta name="theme-color" content="#aebbbc" />
+  <title>Liga · Das Brett</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Oswald:wght@300;400;500;600;700&family=Work+Sans:wght@400;500;600;700&display=swap" />
   <link rel="stylesheet" href="./style.css" />
 </head>
 <body>
   <header class="site">
-    <a class="brand" href="./">Championships</a>
+    <a class="brand" href="./">Das Brett</a>
     <nav class="nav">
       <a href="./admin.html">Admin</a>
     </nav>
   </header>
 
   <main>
-    <div class="page-hero">
-      <h1 id="page-title">Store Championships</h1>
-      <div class="subtitle" id="page-subtitle">Season points across all active ligas</div>
+    <div class="lb-hero">
+      <div class="eyebrow" id="hero-eyebrow"></div>
+      <h1 id="hero-title">Liga</h1>
+      <div class="meta" id="hero-meta"></div>
+      <div class="hero-rule"></div>
     </div>
 
     <div id="tabs-host"></div>
@@ -72,18 +74,20 @@
       tabsHost.innerHTML = "";
 
       if (!org) {
-        document.getElementById("page-title").textContent = "Not found";
-        document.getElementById("page-subtitle").textContent = "";
+        document.getElementById("hero-eyebrow").textContent = "";
+        document.getElementById("hero-title").textContent = "Not found";
+        document.getElementById("hero-meta").textContent = "";
         content.appendChild(el("section", { class: "card" },
           el("div", { class: "status err" },
             `No organization with slug "${slug}". Check the link or visit the home page for the directory.`)));
         return;
       }
 
-      // Swap page title to the org's identity
-      document.title = `${org.name} · Championships`;
-      document.getElementById("page-title").textContent = org.name;
-      document.getElementById("page-subtitle").textContent = "Season points across all active ligas";
+      // Fill the editorial hero band with the org's identity.
+      document.title = `Liga · ${org.name}`;
+      document.getElementById("hero-eyebrow").textContent = "Championship";
+      document.getElementById("hero-title").textContent = org.name;
+      document.getElementById("hero-meta").textContent = "Season points across all active ligas";
 
       // Fetch systems, all tournaments, and all events in parallel
       const [systems, tournaments, allEvents] = await Promise.all([
@@ -168,7 +172,7 @@
         return card;
       }
 
-      // ---- Full table for ligas with standings ----
+      // ---- Full card for ligas with standings ----
       const card = el("section", { class: "card" });
       const header = el("div", { class: "league-header" });
       header.appendChild(el("h2", {}, t.name));
@@ -179,17 +183,45 @@
       }
       card.appendChild(header);
 
+      // Championship description sits directly under the header.
+      if (t.description) {
+        card.appendChild(el("p", { class: "league-desc" }, t.description));
+      }
+
+      // ---- Top 3 leaders (podium) ----
+      const top3 = rows.slice(0, 3);
+      const leaders = el("div", { class: "leaders" });
+      top3.forEach((r, i) => {
+        const place = i + 1;
+        const row = el("div", { class: "leader" + (place === 1 ? " first" : "") });
+        row.appendChild(el("div", { class: "place" },
+          place === 1 ? "1st" : place === 2 ? "2nd" : "3rd"));
+        row.appendChild(el("div", { class: "avatar" }, initialsFor(r.name)));
+        const who = el("div", { class: "who" });
+        who.appendChild(el("div", { class: "name" }, r.name));
+        who.appendChild(el("div", { class: "sub" },
+          `${r.daysAttended} day${r.daysAttended === 1 ? "" : "s"} played`));
+        row.appendChild(who);
+        const score = el("div", { class: "score" });
+        score.appendChild(el("div", { class: "n" }, String(r.totalPoints)));
+        score.appendChild(el("div", { class: "u" }, "pts"));
+        row.appendChild(score);
+        leaders.appendChild(row);
+      });
+      card.appendChild(leaders);
+
+      // ---- Full standings table (all rows, including top-3 for continuity) ----
+      if (rows.length > 3) {
+        card.appendChild(el("div", { class: "section-label" }, "Full standings"));
+      }
       const table = el("table");
       const thead = el("thead");
-
-      // Per-day header: day name on top, date subtitle below ("Qualifier 1 / May 24")
       const dayHeaders = days.map(d => {
         const th = el("th", { class: "day", title: d.name });
         th.appendChild(el("div", {}, d.name));
         if (d.event_date) th.appendChild(el("div", { class: "day-date" }, fmtDate(d.event_date)));
         return th;
       });
-
       thead.appendChild(el("tr", {}, [
         el("th", {}, "#"),
         el("th", {}, "Player"),
@@ -202,6 +234,7 @@
       const tbody = el("tbody");
       rows.forEach((r, i) => {
         const tr = el("tr");
+        if (i >= t.cut_size) tr.classList.add("below-cut");
         tr.appendChild(el("td", { class: "rank" }, String(i + 1)));
         tr.appendChild(el("td", { class: "player" }, r.name));
         tr.appendChild(el("td", { class: "total" }, String(r.totalPoints)));
@@ -223,17 +256,23 @@
           tr.classList.add("cut-line");
           tbody.appendChild(el("tr", { class: "cut-label" }, [
             el("td", { colspan: 4 + days.length },
-              `▼ Cut line — top ${t.cut_size} advance to finals ▼`)
+              `Cut · Top ${t.cut_size} advance to finals`)
           ]));
         }
       });
       table.appendChild(tbody);
 
-      // Horizontal scroll wrapper — for ligas with many days on narrow screens.
       const scrollWrap = el("div", { class: "table-scroll" });
       scrollWrap.appendChild(table);
       card.appendChild(scrollWrap);
       return card;
+    }
+
+    function initialsFor(name) {
+      const parts = (name || "").trim().split(/\s+/).filter(Boolean);
+      if (parts.length === 0) return "·";
+      if (parts.length === 1) return parts[0][0].toUpperCase();
+      return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
     }
 
     // ============ Calendar ============
@@ -527,8 +566,9 @@
 
     // ============ No slug → directory of organizations ============
     async function renderDirectory() {
-      document.getElementById("page-title").textContent = "Store Championships";
-      document.getElementById("page-subtitle").textContent = "Pick an organization to see its leaderboards";
+      document.getElementById("hero-eyebrow").textContent = "Championships";
+      document.getElementById("hero-title").textContent = "Store Championships";
+      document.getElementById("hero-meta").textContent = "Pick an organization to see its leaderboards";
 
       const content = document.getElementById("content");
       content.innerHTML = "";
