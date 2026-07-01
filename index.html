@@ -11,18 +11,11 @@
   <link rel="stylesheet" href="./style.css" />
 </head>
 <body>
-  <header class="site">
-    <a class="brand" href="./">Das Brett</a>
-    <nav class="nav">
-      <a href="./admin.html">Admin</a>
-    </nav>
-  </header>
-
   <main>
     <div class="lb-hero">
-      <div class="eyebrow" id="hero-eyebrow"></div>
+      <div class="eyebrow" id="hero-eyebrow">Championship</div>
       <h1 id="hero-title">Liga</h1>
-      <div class="meta" id="hero-meta"></div>
+      <div class="meta" id="hero-meta">Season points across all active ligas</div>
       <div class="hero-rule"></div>
     </div>
 
@@ -47,47 +40,35 @@
 
   <script type="module">
     import {
-      getOrganizations, getOrganizationBySlug,
+      getDefaultOrganization,
       getGameSystems, getTournaments, getEvents, expandEventsToOccurrences,
       getPlayers, getStandings, computeLeaderboard, el, fmtDate
     } from "./app.js";
 
     const params = new URLSearchParams(location.search);
-    const orgSlug = (params.get("org") || "").toLowerCase();
     const initialSys = (params.get("sys") || "").toLowerCase();
 
     async function render() {
-      if (orgSlug) {
-        await renderOrgPage(orgSlug, initialSys || null);
-      } else {
-        await renderDirectory();
-      }
+      await renderMain(initialSys || null);
       document.getElementById("refreshed-at").textContent = new Date().toLocaleString();
     }
 
-    // ============ Single-org leaderboards ============
-    async function renderOrgPage(slug, activeSys) {
-      const org = await getOrganizationBySlug(slug);
+    // ============ Single-tenant leaderboards ============
+    async function renderMain(activeSys) {
+      const org = await getDefaultOrganization();
       const content = document.getElementById("content");
       const tabsHost = document.getElementById("tabs-host");
       content.innerHTML = "";
       tabsHost.innerHTML = "";
 
       if (!org) {
-        document.getElementById("hero-eyebrow").textContent = "";
-        document.getElementById("hero-title").textContent = "Not found";
+        document.getElementById("hero-title").textContent = "Not configured";
         document.getElementById("hero-meta").textContent = "";
         content.appendChild(el("section", { class: "card" },
           el("div", { class: "status err" },
-            `No organization with slug "${slug}". Check the link or visit the home page for the directory.`)));
+            "The tracker has no organization row in the database yet. Bootstrap one via the admin flow or SQL.")));
         return;
       }
-
-      // Fill the editorial hero band with the org's identity.
-      document.title = `Liga · ${org.name}`;
-      document.getElementById("hero-eyebrow").textContent = "Championship";
-      document.getElementById("hero-title").textContent = org.name;
-      document.getElementById("hero-meta").textContent = "Season points across all active ligas";
 
       // Fetch systems, all tournaments, and all events in parallel
       const [systems, tournaments, allEvents] = await Promise.all([
@@ -101,7 +82,7 @@
 
       // Render tabs only when there are 2+ systems
       if (systems.length >= 2) {
-        tabsHost.appendChild(renderTabs(slug, systems, activeSys));
+        tabsHost.appendChild(renderTabs(systems, activeSys));
       }
 
       // Filter tournaments by tab
@@ -136,13 +117,11 @@
       content.appendChild(renderCalendarCard(datasets, systems, filteredEvents));
     }
 
-    function renderTabs(slug, systems, activeSys) {
+    function renderTabs(systems, activeSys) {
       const wrap = el("div", { class: "tabs" });
       const make = (key, label) => {
         const isActive = activeSys === key || (!activeSys && key === null);
-        const href = key
-          ? `?org=${encodeURIComponent(slug)}&sys=${encodeURIComponent(key)}`
-          : `?org=${encodeURIComponent(slug)}`;
+        const href = key ? `?sys=${encodeURIComponent(key)}` : "./";
         return el("a", { class: "tab" + (isActive ? " active" : ""), href }, label);
       };
       wrap.appendChild(make(null, "All"));
@@ -564,34 +543,6 @@
       });
     }
 
-    // ============ No slug → directory of organizations ============
-    async function renderDirectory() {
-      document.getElementById("hero-eyebrow").textContent = "Championships";
-      document.getElementById("hero-title").textContent = "Store Championships";
-      document.getElementById("hero-meta").textContent = "Pick an organization to see its leaderboards";
-
-      const content = document.getElementById("content");
-      content.innerHTML = "";
-      const orgs = await getOrganizations();
-      if (orgs.length === 0) {
-        content.appendChild(el("section", { class: "card" },
-          el("div", { class: "empty" },
-            "No organizations yet. If you're an admin, sign in and create one.")));
-        return;
-      }
-      const card = el("section", { class: "card" });
-      card.appendChild(el("h2", {}, "Organizations"));
-      const list = el("div", { class: "org-list" });
-      orgs.forEach(o => {
-        const row = el("a", { class: "org-link", href: `?org=${encodeURIComponent(o.slug)}` }, [
-          el("strong", {}, o.name),
-          el("span", { class: "meta" }, ` · /${o.slug}`),
-        ]);
-        list.appendChild(row);
-      });
-      card.appendChild(list);
-      content.appendChild(card);
-    }
 
     render().catch(err => {
       console.error(err);

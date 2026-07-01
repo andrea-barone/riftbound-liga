@@ -11,30 +11,28 @@
   <link rel="stylesheet" href="./style.css" />
 </head>
 <body>
-  <header class="site">
-    <a class="brand" href="./">Das Brett</a>
-    <nav class="nav">
-      <a href="./">Liga</a>
-      <span id="who" class="who"></span>
-      <button id="sign-out" class="secondary" style="display:none">Sign out</button>
-    </nav>
-  </header>
-
   <main>
-    <div class="page-hero">
-      <h1 id="admin-title">Admin</h1>
-      <div class="subtitle" id="admin-subtitle">Manage your organization's championships.</div>
+    <div class="lb-hero">
+      <div class="eyebrow">Admin</div>
+      <h1>Manage</h1>
+      <div class="meta" id="admin-subtitle">Championships, events, and game systems.</div>
+      <div class="hero-rule"></div>
     </div>
 
     <div id="status-area"></div>
+
+    <!-- Sign-out lives in a top toolbar since the site header is gone. -->
+    <div id="admin-toolbar" class="admin-toolbar" style="display:none">
+      <span id="who" class="who"></span>
+      <button id="sign-out" class="secondary small">Sign out</button>
+    </div>
 
     <!-- Sign-in -->
     <section id="signin-view" class="card" style="display:none">
       <h2>Sign in</h2>
       <p class="muted" style="margin-top:0">
         Enter your email — we'll send you a one-time login link.
-        First-time users are prompted to create their organization on the
-        next screen.
+        Only allowlisted email addresses can manage the tracker.
       </p>
       <div class="row">
         <div class="field" style="flex:1">
@@ -45,62 +43,14 @@
       </div>
     </section>
 
-    <!-- Create organization (shown when signed in with zero orgs) -->
-    <section id="create-org-view" class="card" style="display:none">
-      <h2>Create your organization</h2>
-      <p class="muted" style="margin-top:0">
-        You're not yet a member of any organization. Create one to start
-        managing championships under it.
+    <!-- Not authorised (signed in but not an admin) -->
+    <section id="denied-view" class="card" style="display:none">
+      <h2>Not authorised</h2>
+      <p>
+        You're signed in as <strong id="denied-email"></strong>, but this
+        email isn't on the admin allowlist. Ask the person who set up the
+        tracker to add you.
       </p>
-      <div class="row">
-        <div class="field" style="flex:2">
-          <label>Organization name</label>
-          <input type="text" id="new-org-name" placeholder="Your store or organization" />
-        </div>
-        <div class="field" style="flex:1">
-          <label>URL slug</label>
-          <input type="text" id="new-org-slug" placeholder="your-slug" />
-        </div>
-        <button id="create-org">Create</button>
-      </div>
-      <p class="muted" style="font-size:12px; margin-top:6px;">
-        The slug becomes part of the public URL: <code>?org=&lt;slug&gt;</code>.
-        Lowercase letters, digits and hyphens; 3–32 characters.
-      </p>
-    </section>
-
-    <!-- Org picker (shown when signed in with 1+ orgs and none selected) -->
-    <section id="org-picker-view" class="card" style="display:none">
-      <h2>Your organizations</h2>
-      <div id="org-list"></div>
-
-      <hr class="divider" />
-      <h2 class="sub">Create a new organization</h2>
-      <div class="row">
-        <div class="field" style="flex:2">
-          <label>Name</label>
-          <input type="text" id="picker-org-name" placeholder="Acme Game Store" />
-        </div>
-        <div class="field" style="flex:1">
-          <label>Slug</label>
-          <input type="text" id="picker-org-slug" placeholder="acme" />
-        </div>
-        <button id="picker-create-org">Create</button>
-      </div>
-    </section>
-
-    <!-- Org-scope header (shown when an org is selected) -->
-    <section id="org-banner" class="card" style="display:none">
-      <div class="org-banner">
-        <div class="info">
-          <div class="label">Managing</div>
-          <h3 id="org-banner-name"></h3>
-          <div class="meta">
-            Public link: <a id="org-public-link" target="_blank" rel="noopener"></a>
-          </div>
-        </div>
-        <button id="switch-org" class="secondary">Switch organization</button>
-      </div>
     </section>
 
     <!-- Admin shell: sidebar nav + main content -->
@@ -110,15 +60,13 @@
         <a href="?view=ligas"    data-view="ligas">Ligas</a>
         <a href="?view=events"   data-view="events">Events</a>
         <a href="?view=systems"  data-view="systems">Game systems</a>
-        <a href="?view=team"     data-view="team">Team</a>
-        <a href="?view=settings" data-view="settings">Settings</a>
       </nav>
       <div class="admin-main">
 
         <!-- Overview -->
         <section id="overview-view" class="card" style="display:none">
           <h2>Overview</h2>
-          <p class="muted" style="margin-top:0">A snapshot of what's set up for this organization.</p>
+          <p class="muted" style="margin-top:0">A snapshot of what's set up.</p>
           <div class="overview-stats">
             <div class="overview-stat">
               <div class="num" id="stat-ligas">0</div>
@@ -132,46 +80,14 @@
               <div class="num" id="stat-systems">0</div>
               <div class="label">Game systems</div>
             </div>
-            <div class="overview-stat">
-              <div class="num" id="stat-team">0</div>
-              <div class="label">Team admins</div>
-            </div>
           </div>
           <hr class="divider" />
           <h2 class="sub">Quick actions</h2>
           <div class="overview-actions">
             <button data-view-to="ligas">+ Create a liga</button>
             <button class="secondary" data-view-to="events">+ Add an event</button>
-            <button class="secondary" data-view-to="team">+ Invite admin</button>
           </div>
         </section>
-
-    <!-- Org settings -->
-    <section id="org-settings-view" class="card" style="display:none">
-      <h2>Organization settings</h2>
-      <div class="row">
-        <div class="field" style="flex:2"><label>Name</label><input type="text" id="org-name" /></div>
-        <div class="field" style="flex:1"><label>Slug</label><input type="text" id="org-slug" /></div>
-      </div>
-      <div class="toolbar">
-        <button id="save-org">Save</button>
-        <button id="delete-org" class="danger">Delete organization</button>
-      </div>
-    </section>
-
-    <!-- Team (admin emails for this org) -->
-    <section id="team-view" class="card" style="display:none">
-      <h2>Team</h2>
-      <div id="team-list" style="margin-bottom:14px;"></div>
-      <div class="row">
-        <div class="field" style="flex:1"><label>Invite admin by email</label><input type="email" id="new-admin-email" placeholder="staff@example.com" /></div>
-        <button id="add-admin">Add</button>
-      </div>
-      <p class="muted" style="font-size:12px;">
-        The added email can sign in via magic link and manage this organization.
-        They won't see other orgs they don't belong to.
-      </p>
-    </section>
 
     <!-- Game systems -->
     <section id="systems-view" class="card" style="display:none">

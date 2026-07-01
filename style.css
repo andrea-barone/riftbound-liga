@@ -702,6 +702,16 @@ th.day .day-date {
 }
 .admin-main { min-width: 0; }
 
+/* Sign-out toolbar (used since the site header is inherited by the parent page) */
+.admin-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  justify-content: flex-end;
+  margin-bottom: 16px;
+}
+.admin-toolbar .who { color: var(--muted); font-size: 13px; }
+
 .admin-breadcrumb {
   display: flex;
   align-items: center;

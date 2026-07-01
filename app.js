@@ -9,6 +9,20 @@ export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 // Organizations
 // ----------------------------------------------------------------------
 
+// Single-tenant: return the (one) organization row. The multi-org schema is
+// kept for RLS reasons (writes are gated on organization_admins), but the UI
+// no longer surfaces multiple orgs.
+export async function getDefaultOrganization() {
+  const { data, error } = await supabase
+    .from("organizations")
+    .select("*")
+    .order("created_at", { ascending: true })
+    .limit(1)
+    .maybeSingle();
+  if (error) throw error;
+  return data;
+}
+
 export async function getOrganizations() {
   const { data, error } = await supabase
     .from("organizations")
